@@ -229,6 +229,96 @@ def meals():
     return sorted(out, key=lambda m: (m["date"], m["id"]), reverse=True)
 
 
+# ---------- 点菜（亲友只读链接） ----------
+
+ORDERS_FILE = storage.DATA / "orders.json"
+
+
+def _orders() -> list[dict]:
+    return json.loads(ORDERS_FILE.read_text(encoding="utf-8")) if ORDERS_FILE.exists() else []
+
+
+def _guest_token(create: bool = False, reset: bool = False) -> str:
+    cfg = json.loads(llm.CONFIG_FILE.read_text(encoding="utf-8")) if llm.CONFIG_FILE.exists() else {}
+    tok = cfg.get("guest", {}).get("token", "")
+    if reset or (create and not tok):
+        import secrets as _secrets
+
+        tok = _secrets.token_urlsafe(8)
+        cfg["guest"] = {"token": tok}
+        llm.CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return tok
+
+
+def _check_guest(t: str) -> None:
+    if not t or t != _guest_token():
+        raise HTTPException(403, "点菜链接无效，找主人要一个新的吧")
+
+
+@app.post("/api/guest-link")
+def guest_link(reset: bool = False):
+    return {"token": _guest_token(create=True, reset=reset)}
+
+
+@app.get("/api/guest/menu")
+def guest_menu(t: str):
+    _check_guest(t)
+    stats = storage.recipe_stats()
+    out = [{k: r.get(k) for k in ("id", "name", "category", "cover", "kcal", "minutes")}
+           | {"times": stats.get(r["id"], {}).get("times", 0), "rating": stats.get(r["id"], {}).get("rating")}
+           for r in storage.list_recipes()]
+    return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
+
+
+@app.post("/api/guest/order")
+def guest_order(body: dict):
+    _check_guest(body.get("t", ""))
+    names = {r["id"]: r["name"] for r in storage.list_recipes()}
+    items = [{"recipe_id": rid, "name": names[rid]} for rid in body.get("items", []) if rid in names]
+    if not items:
+        raise HTTPException(400, "先点至少一道菜")
+    orders = _orders()
+    orders.append({"id": f"o{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+                   "from": str(body.get("from", "")).strip()[:20] or "神秘食客",
+                   "note": str(body.get("note", "")).strip()[:200],
+                   "items": items, "date": date.today().isoformat(), "done": False})
+    ORDERS_FILE.write_text(json.dumps(orders, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return {"ok": True}
+
+
+@app.get("/api/orders")
+def list_orders():
+    return sorted(_orders(), key=lambda o: o["id"], reverse=True)
+
+
+@app.put("/api/orders/{oid}")
+def update_order(oid: str, body: dict):
+    orders = _orders()
+    for o in orders:
+        if o["id"] == oid:
+            o["done"] = bool(body.get("done", True))
+            ORDERS_FILE.write_text(json.dumps(orders, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+            return o
+    raise HTTPException(404, "没有这单")
+
+
+# ---------- 买菜清单 ----------
+
+SHOPPING_FILE = storage.DATA / "shopping.json"
+
+
+@app.get("/api/shopping")
+def get_shopping():
+    return json.loads(SHOPPING_FILE.read_text(encoding="utf-8")) if SHOPPING_FILE.exists() else {"items": []}
+
+
+@app.put("/api/shopping")
+def put_shopping(body: dict):
+    doc = {"items": body.get("items", [])}
+    SHOPPING_FILE.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return doc
+
+
 @app.get("/api/monthcard/{month}")
 def month_card(month: str):
     """月度食单回忆卡：YYYY-MM → 一张可保存分享的小结图。"""

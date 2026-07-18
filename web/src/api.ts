@@ -7,6 +7,11 @@ export interface Recipe {
   illust?: { ingredients: string[]; steps: string[] };
   annotations?: { date: string; note: string }[];
 }
+export interface Order {
+  id: string; from: string; note: string; date: string; done: boolean;
+  items: { recipe_id: string; name: string }[];
+}
+export interface ShopItem { name: string; amounts: string; recipes: string; checked: boolean; seasoning: boolean }
 export interface Meal {
   id: string; recipe_id: string; recipe_name: string; date: string;
   rating: number | null; note: string; photo_card: string; kcal?: number | null;
@@ -43,6 +48,16 @@ export const api = {
   })),
   deleteMeal: (id: string) => j<{ ok: boolean }>(fetch(`/api/meals/${id}`, { method: "DELETE" })),
   seedExamples: () => j<{ added: number }>(fetch("/api/seed-examples", { method: "POST" })),
+  guestLink: (reset = false) =>
+    j<{ token: string }>(fetch(`/api/guest-link${reset ? "?reset=true" : ""}`, { method: "POST" })),
+  orders: () => j<Order[]>(fetch("/api/orders")),
+  orderDone: (id: string, done = true) => j<Order>(fetch(`/api/orders/${id}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ done }),
+  })),
+  shopping: () => j<{ items: ShopItem[] }>(fetch("/api/shopping")),
+  saveShopping: (items: ShopItem[]) => j<{ items: ShopItem[] }>(fetch("/api/shopping", {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
+  })),
   cutout: (file: File, opts: { alreadyCut?: boolean; mode?: string; circle?: { cx: number; cy: number; r: number } }) => {
     const fd = new FormData();
     fd.append("photo", file);

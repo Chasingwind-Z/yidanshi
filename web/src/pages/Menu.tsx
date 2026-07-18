@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, type Recipe } from "../api";
+import { api, type Order, type Recipe } from "../api";
 
 export default function Menu() {
   const [cats, setCats] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
   const [cat, setCat] = useState("");
   const [fan, setFan] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [avoid7, setAvoid7] = useState(() => localStorage.getItem("fan_avoid7") !== "0");
   const [quick30, setQuick30] = useState(() => localStorage.getItem("fan_quick30") === "1");
 
@@ -25,7 +26,10 @@ export default function Menu() {
       setCat(c => (c && all.includes(c) ? c : all[0] || ""));
     });
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.orders().then(os => setOrders(os.filter(o => !o.done))).catch(() => {});
+  }, []);
 
   if (recipes === null) return <div className="loading">加载中</div>;
   const shown = recipes.filter(r => r.category === cat);
@@ -45,6 +49,17 @@ export default function Menu() {
           <a href="#/settings" title="设置">⚙</a>
         </div>
       </div>
+      {orders.map(o => (
+        <div className="ordercard" key={o.id}>
+          <div className="t">🍽 {o.from} 点菜啦（{o.date.slice(5).replace("-", "/")}）</div>
+          <p>{o.items.map(it => (
+            <a key={it.recipe_id} href={`#/recipe/${it.recipe_id}`} style={{ textDecoration: "underline", marginRight: 8 }}>{it.name}</a>
+          ))}</p>
+          {o.note && <p style={{ color: "var(--dim)" }}>「{o.note}」</p>}
+          <button className="done-btn" onClick={() =>
+            api.orderDone(o.id).then(() => setOrders(os => os.filter(x => x.id !== o.id)))}>做完了 / 知道了</button>
+        </div>
+      ))}
       {fan && (
         <div className="fanpanel">
           <label><input type="checkbox" checked={avoid7} onChange={e => setAvoid7(e.target.checked)} />最近 7 天没做过的</label>

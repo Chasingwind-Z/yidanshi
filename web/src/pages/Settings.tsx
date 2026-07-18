@@ -11,6 +11,35 @@ async function getConfig(): Promise<ConfigPayload> {
   return (await fetch("/api/config")).json();
 }
 
+function GuestLinkSection() {
+  const [link, setLink] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function make(reset = false) {
+    const r = await fetch(`/api/guest-link${reset ? "?reset=true" : ""}`, { method: "POST" });
+    const { token } = await r.json();
+    setLink(`${location.origin}/#/guest/${token}`);
+    setCopied(false);
+  }
+  useEffect(() => { make(); }, []);
+
+  return (
+    <>
+      <div className="hint" style={{ marginTop: 0 }}>
+        发给家人朋友，对方打开就是你的只读食单，能点菜不能改。点单会出现在你的食单页顶部。
+        同一 Wi-Fi 直接可用；给外地的人用需要内网穿透（如 Cloudflare Tunnel）。
+      </div>
+      <input readOnly value={link} style={{ marginTop: 8 }} onFocus={e => e.target.select()} />
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="btn ghost" onClick={() => {
+          navigator.clipboard?.writeText(link).then(() => setCopied(true));
+        }}>{copied ? "已复制 ✓" : "复制链接"}</button>
+        <button className="btn ghost danger" onClick={() => { if (confirm("重置后旧链接立即失效，确定？")) make(true); }}>重置链接</button>
+      </div>
+    </>
+  );
+}
+
 export default function Settings() {
   const [cfg, setCfg] = useState<ConfigPayload | null>(null);
   const [llm, setLlm] = useState<Cfg>({});
@@ -123,6 +152,9 @@ export default function Settings() {
       <div style={{ marginTop: 18 }}>
         <button className="btn" disabled={saving} onClick={save}>{saving ? "保存中…" : "保存设置"}</button>
       </div>
+
+      <h1 style={{ fontSize: 18, marginTop: 28 }}>点菜链接</h1>
+      <GuestLinkSection />
 
       <h1 style={{ fontSize: 18, marginTop: 28 }}>数据</h1>
       <div className="hint" style={{ lineHeight: 2 }}>
