@@ -12,7 +12,31 @@ const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.
 export default function RecipePage({ id }: { id: string }) {
   const [r, setR] = useState<Recipe | null>(null);
   const [editing, setEditing] = useState(false);
+  const [canIllust, setCanIllust] = useState(false);
+  const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
   useEffect(() => { api.recipe(id).then(setR).catch(() => setR(null)); }, [id]);
+  useEffect(() => { api.aiStatus().then(s => setCanIllust(!!s.imagegen?.available)).catch(() => {}); }, []);
+
+  const missing = !r?.illust ? [] : [
+    ...r.illust.ingredients.map((u, i) => (!u && r.ingredients[i] ? { kind: "ing" as const, index: i + 1, label: r.ingredients[i].name } : null)),
+    ...r.illust.steps.map((u, i) => (!u ? { kind: "step" as const, index: i + 1, label: `步骤 ${i + 1}` } : null)),
+  ].filter((x): x is { kind: "ing" | "step"; index: number; label: string } => x !== null);
+
+  async function genAll() {
+    setGen({ running: true, msg: "" });
+    for (let k = 0; k < missing.length; k++) {
+      const it = missing[k];
+      setGen({ running: true, msg: `正在画「${it.label}」（${k + 1}/${missing.length}），每张几十秒…` });
+      try {
+        await api.aiIllustrate(id, it.kind, it.index);
+        setR(await api.recipe(id));
+      } catch (e) {
+        setGen({ running: false, msg: `画到「${it.label}」时失败：${(e as Error).message}` });
+        return;
+      }
+    }
+    setGen({ running: false, msg: "" });
+  }
 
   if (!r) return <div className="loading">加载中</div>;
   if (editing) return <Editor r={r} onDone={nr => { setR(nr); setEditing(false); }} />;
@@ -61,6 +85,14 @@ export default function RecipePage({ id }: { id: string }) {
             <div className="tips">
               <b>小贴士：</b>
               {r.tips.map((t, i) => <p key={i}>{t}</p>)}
+            </div>
+          )}
+          {canIllust && missing.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <button className="btn ghost" disabled={gen.running} onClick={genAll}>
+                {gen.running ? gen.msg : `✨ 生成插画教程卡（${missing.length} 张）`}
+              </button>
+              {!gen.running && gen.msg && <div className="err">{gen.msg}</div>}
             </div>
           )}
         </div>

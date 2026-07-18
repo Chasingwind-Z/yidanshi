@@ -15,8 +15,8 @@
 
 - 📷 **拍照即记录** — 拍完用圆框参考线把盘子框准，本地 [rembg](https://github.com/danielgatis/rembg) AI 抠图和「圆框直裁」两种效果各出一张任选（3–4 秒，不花钱不上传云端）；iPhone 长按抠好的透明图直接传，自动识别
 - 📖 **自己的菜单** — 一碗饭 / 一碗面 / 一碗汤 / 一碗菜分类浏览，每道菜有品味评分、做过几次；🎲 在当前分类里「随便来一份」；记录可改可删
-- 🎨 **教程卡** — 印刷菜谱卡质感：楷体菜名、食材图标、编号步骤、小贴士；可为每道菜生成统一画风的 AI 插画（`scripts/gen_illust_prompts.py` 产出 prompt 清单，出图后放回目录即自动显示）
-- 🤖 **AI 整理教程** — 把抖音/小红书教程文案粘进 App，AI 直接整理成结构化菜谱。通道可配置：本机 `claude` / `codex` CLI（零配置，复用订阅），或任意 OpenAI 兼容 API（DeepSeek、Qwen 等，`data/config.json` 三行配置）；菜谱本身是 `data/recipes/*.md`，让 AI 助手直接写文件也行（[docs/recipe-ingest.md](docs/recipe-ingest.md)）
+- 🎨 **一键插画教程卡** — 印刷菜谱卡质感：楷体菜名、食材图标、编号步骤、小贴士。配好生图 API 后详情页一键为整道菜生成「贴纸式厚涂卡通」插画（食材图标 + 分步骤道具拼贴图，逐张进度、边画边显示）；风格规范与 prompt 模板见 [docs/illustration-style.md](docs/illustration-style.md)，手动出图走 `scripts/gen_illust_prompts.py`
+- 🤖 **AI 整理教程** — 教程文案、甚至你自己随口描述的一段做法，粘进 App 即整理成结构化菜谱。文字与生图通道均可配置（示例见 [deploy/config.example.json](deploy/config.example.json)）：文字走本机 `claude` / `codex` CLI（零配置复用订阅）或 OpenAI 兼容 API（DeepSeek 等，注意 DeepSeek 无多模态）；生图走任意 OpenAI 兼容 `/images/generations`（豆包 Seedream、gpt-image-1、SiliconFlow 等）。菜谱本身是 `data/recipes/*.md`，让 AI 助手直接写文件也行（[docs/recipe-ingest.md](docs/recipe-ingest.md)）
 - 🏠 **自托管** — 跑在自己电脑上，手机浏览器加到主屏当 App 用（PWA，支持长按图标直达「记一餐」）
 
 ## 快速开始

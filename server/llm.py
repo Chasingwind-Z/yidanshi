@@ -27,13 +27,17 @@ CONFIG_FILE = storage.DATA / "config.json"
 _EXTRA = [os.path.expanduser("~/.local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
 os.environ["PATH"] = os.environ.get("PATH", "") + ":" + ":".join(_EXTRA)
 
-PROMPT = """把下面的做菜教程原文提炼成结构化菜谱，只输出一个 JSON 对象，不要任何其他文字：
+PROMPT = """把下面这段做菜内容整理成结构化菜谱。它可能是社交媒体教程文案，也可能是用户自己随口描述的做法回忆——口语、跳跃、不完整都正常。规则：
+- 忠实整理，不要发明原文没有的食材和步骤；用量没说就写"适量"
+- 步骤合并成3-6步，每步一句话说清楚动作和火候/时长
+- 原文里的个人经验（"下次少放盐"这类）归入 tips
+只输出一个 JSON 对象，不要任何其他文字：
 {{"name": "菜名", "category": "从 一碗饭/一碗面/一碗汤/一碗菜/一碗甜 中选一个",
   "ingredients": [{{"name": "食材名", "amount": "用量"}}],
-  "steps": ["步骤合并成3-6步，每步一句话说清楚"],
-  "tips": ["贴士，没有就给空数组"]}}
+  "steps": ["..."],
+  "tips": ["没有就给空数组"]}}
 
-教程原文：
+原文：
 {text}"""
 
 

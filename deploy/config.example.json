@@ -1,0 +1,14 @@
+{
+  "llm": {
+    "backend": "openai",
+    "base_url": "https://api.deepseek.com/v1",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "model": "deepseek-chat"
+  },
+  "imagegen": {
+    "backend": "openai-images",
+    "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "api_key_env": "ARK_API_KEY",
+    "model": "doubao-seedream-4-0-250828"
+  }
+}

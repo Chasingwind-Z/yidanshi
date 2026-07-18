@@ -49,7 +49,15 @@ export const api = {
     return j<{ results: { mode: string; photo_id: string; card: string }[] }>(
       fetch("/api/cutout", { method: "POST", body: fd }));
   },
-  aiStatus: () => j<{ backend: string; model: string; available: boolean }>(fetch("/api/ai/status")),
+  aiStatus: () => j<{
+    backend: string; model: string; available: boolean;
+    imagegen?: { backend: string; model: string; available: boolean };
+  }>(fetch("/api/ai/status")),
+  aiIllustrate: (recipe_id: string, kind: "ing" | "step", index: number) =>
+    j<{ url: string }>(fetch("/api/ai/illustrate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipe_id, kind, index }),
+    })),
   aiExtract: (text: string, source: string) =>
     j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; source: string }>(
       fetch("/api/ai/extract", {

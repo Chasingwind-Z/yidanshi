@@ -1,6 +1,16 @@
 # 一箪食 · 路线图
 
-按 Goal 推进。G0–G7 首轮已完成（2026-07-18），R2 体验迭代已完成（同日），剩余项集中在「待人工确认 / 待真实使用」。
+按 Goal 推进。G0–G7 首轮已完成（2026-07-18），R2 体验迭代、R3 生图管线已完成（同日），剩余项集中在「待人工确认 / 待真实使用」。
+
+## R3 生图管线 ✅（插画一键生成，等配 key 即用）
+
+- [x] 风格规范 `docs/illustration-style.md`（设计 agent 产出）：以 AB 教程卡为基准定为「贴纸式厚涂卡通」，含逐字锚点前缀、食材/步骤两套模板、负面清单、芦笋牛排 6 条成品 prompt、尺寸与深色适配规则
+- [x] `server/imagegen.py`：openai-images 兼容通道（豆包 Seedream / gpt-image-1 / SiliconFlow 等）+ codex-cli 通道（检测到二进制才启用）；prompt 与风格规范同源
+- [x] 详情页「✨ 生成插画教程卡」：逐张生成显示进度，边画边上卡，失败可续
+- [x] mock 端到端验证通过（真实出图待配 key：`data/config.json` 照抄 `deploy/config.example.json` + 设置对应环境变量）
+- [x] 口语化描述整理：AI 整理 prompt 升级，随口描述的做法回忆也能规整（不发明内容、缺量写"适量"、经验归贴士）
+- [ ] 配上真实生图 key 后跑一道菜全套插画，按 72px 缩图自检风格（**待 zzf 配 key**）
+- [ ] codex CLI 修复：~/.local/bin/codex 软链指向的 Codex.app 已不存在（**待 zzf 重装或删软链**）
 
 ## R2 体验迭代 ✅（基于真实使用反馈 + 双设计 agent 审视）
 

@@ -9,10 +9,20 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import cutout, llm, storage
+from . import cutout, imagegen, llm, storage
 
 app = FastAPI(title="一箪食 yidanshi")
 storage.init_dirs()
+
+# API 密钥从 data/secrets.env 加载（launchd 环境读不到 shell 变量；data/ 不进 git）
+_secrets = storage.DATA / "secrets.env"
+if _secrets.exists():
+    import os
+    for line in _secrets.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip())
 
 
 # ---------- 菜谱 ----------
@@ -90,7 +100,23 @@ async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(Fals
 
 @app.get("/api/ai/status")
 def ai_status():
-    return llm.backend_status()
+    return {**llm.backend_status(), "imagegen": imagegen.backend_status()}
+
+
+@app.post("/api/ai/illustrate")
+def ai_illustrate(body: dict):
+    """逐张生成插画：{recipe_id, kind: "ing"|"step", index(从1起)}。前端按张循环调用以显示进度。"""
+    r = storage.get_recipe(body.get("recipe_id", ""))
+    if r is None:
+        raise HTTPException(404, "no such recipe")
+    kind, index = body.get("kind"), int(body.get("index", 0))
+    n = len(r["ingredients"]) if kind == "ing" else len(r["steps"])
+    if kind not in ("ing", "step") or not 1 <= index <= n:
+        raise HTTPException(400, "bad kind/index")
+    try:
+        return {"url": imagegen.illustrate(r, kind, index)}
+    except Exception as e:
+        raise HTTPException(502, str(e))
 
 
 @app.post("/api/ai/extract")
