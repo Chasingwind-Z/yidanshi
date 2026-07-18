@@ -120,6 +120,26 @@ def generate(prompt: str, size: str) -> bytes:
     return _gen_openai(_config(), prompt, size)
 
 
+REFINE_PROMPT = (
+    "这是一张家常菜俯拍照片。在完全保持食物内容、分量和真实质感不变的前提下把它修得更好看："
+    "矫正白平衡、适度提亮和增加色彩通透感；让餐具完整、居中、干净；"
+    "背景替换为纯净的暖米白色（#f4efe3）纯色底，盘子下方一点柔和浅影。"
+    "保持真实照片质感，不要卡通化、不要改变菜品本身、不要添加原图没有的食物。"
+)
+
+
+def refine(raw: bytes, mime: str = "image/jpeg") -> bytes:
+    """图生图精修原照片（编辑任务对模型要求低，config 里可用 edit_model 指定更便宜的档，如 seedream lite）。"""
+    cfg = dict(_config())
+    if cfg.get("edit_model"):
+        cfg["model"] = cfg["edit_model"]
+    if backend_status()["backend"] != "openai-images" or not backend_status()["available"]:
+        raise RuntimeError("AI 精修需要 openai-images 生图通道")
+    cfg.setdefault("extra", {})
+    cfg["extra"] = {**cfg["extra"], "image": f"data:{mime};base64,{base64.b64encode(raw).decode()}"}
+    return _gen_openai(cfg, REFINE_PROMPT, "1440x1440")
+
+
 def illustrate(recipe: dict, kind: str, index: int) -> str:
     """为菜谱的第 index 个食材/步骤生成插画，返回可访问的 URL 路径。index 从 1 开始。"""
     cfg = _config()

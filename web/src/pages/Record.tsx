@@ -82,6 +82,8 @@ export default function Record() {
   const [cutting, setCutting] = useState(false);
   const [options, setOptions] = useState<CardResult[]>([]);
   const [picked, setPicked] = useState<CardResult | null>(null);
+  const [polishing, setPolishing] = useState(false);
+  const lastShot = useRef<{ f: File; circle: Circle | null } | null>(null);
 
   const [recipeId, setRecipeId] = useState("");
   const [newName, setNewName] = useState("");
@@ -130,6 +132,7 @@ export default function Record() {
     if (!file) return;
     setCutting(true);
     setErr("");
+    lastShot.current = { f: file.f, circle };
     try {
       const r = await api.cutout(file.f, { mode: "both", circle });
       setOptions(r.results);
@@ -140,6 +143,20 @@ export default function Record() {
       setErr("这张没抠好——可以换一张再试，或者不带图直接记录");
     } finally {
       setCutting(false);
+    }
+  }
+
+  async function polish() {
+    if (!lastShot.current) return;
+    setPolishing(true);
+    setErr("");
+    try {
+      const r = await api.cutout(lastShot.current.f, { mode: "polish", circle: lastShot.current.circle ?? undefined });
+      setOptions(o => [...o, ...r.results]);
+    } catch (e) {
+      setErr(`AI 精修失败：${(e as Error).message}`);
+    } finally {
+      setPolishing(false);
     }
   }
 
@@ -162,7 +179,7 @@ export default function Record() {
     }
   }
 
-  const labels: Record<string, string> = { auto: "AI 抠图", circle: "圆框直裁" };
+  const labels: Record<string, string> = { plate: "插画摆盘", auto: "AI 抠图", circle: "圆框直裁", polish: "AI 精修" };
 
   return (
     <>
@@ -191,6 +208,13 @@ export default function Record() {
               </button>
             ))}
           </div>
+          {!options.some(o => o.mode === "polish") && (
+            <div style={{ marginTop: 10 }}>
+              <button className="btn ghost" disabled={polishing} onClick={polish}>
+                {polishing ? "AI 精修中，约一分钟…" : "✨ 都不满意？AI 精修一版（约 0.3 元）"}
+              </button>
+            </div>
+          )}
         </>
       ) : file ? (
         <CircleCrop url={file.url} onDone={crop} onCancel={() => setFile(null)} />

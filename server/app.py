@@ -78,17 +78,29 @@ def random_pick(category: str | None = None):
 @app.post("/api/cutout")
 async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(False),
                     mode: str = Form("auto"), cx: float = Form(-1), cy: float = Form(-1), r: float = Form(-1)):
-    """mode: auto=AI抠图 / circle=参考圆直裁 / both=两种都出让用户选；cx/cy/r 为参考圆相对坐标。"""
+    """mode: plate=抠出食物摆插画盘 / auto=AI抠图直出 / circle=参考圆直裁 / both=全都出让用户选 /
+    polish=AI 图生图精修原照片；cx/cy/r 为参考圆相对坐标。"""
     raw = await photo.read()
     stamp = datetime.now().strftime("p%Y%m%d%H%M%S%f")
     ext = Path(photo.filename or "x.jpg").suffix or ".jpg"
     (storage.PHOTOS / "raw" / f"{stamp}{ext}").write_bytes(raw)
+    circle = (cx, cy, r) if r > 0 else None
 
-    if already_cut or cutout.is_transparent(raw):
-        results = {"auto": cutout.process(raw, already_cut=True)}
+    if mode == "polish":
+        src = cutout._crop_region(raw, *circle) if circle else raw
+        try:
+            card_png = imagegen.refine(src)
+        except Exception as e:
+            raise HTTPException(502, str(e))
+        results = {"polish": (card_png, card_png)}
+    elif already_cut or cutout.is_transparent(raw):
+        img = cutout.process(raw, already_cut=True)
+        from PIL import Image
+        import io as _io
+        plate = cutout._png(cutout.make_plate_card(Image.open(_io.BytesIO(img[0])).convert("RGBA")))
+        results = {"plate": (img[0], plate), "auto": img}
     else:
-        circle = (cx, cy, r) if r > 0 else None
-        modes = ["auto", "circle"] if mode == "both" else [mode]
+        modes = ["plate", "auto", "circle"] if mode == "both" else [mode]
         results = cutout.process_modes(raw, modes, circle)
 
     out = []

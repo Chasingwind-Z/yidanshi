@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from PIL import Image, ImageFilter
 
@@ -15,6 +16,8 @@ MODEL = os.environ.get("YIDANSHI_MODEL", "isnet-general-use")
 CARD_SIZE = 1024
 CARD_BG = (244, 239, 227, 255)  # 暖米白宣纸底（与前端 --bg 一致），盘子落在纸上
 SUBJECT_RATIO = 0.78         # 主体占卡片宽度比例
+PLATE_ASSET = Path(__file__).parent / "assets" / "plate.png"  # 手账贴纸风白瓷盘（Seedream 一次性生成）
+PLATE_FOOD_RATIO = 0.56      # 摆盘模式下食物占卡片宽度比例（落在盘心内）
 
 
 @lru_cache(maxsize=1)
@@ -49,6 +52,25 @@ def make_card(cut: Image.Image, size: int = CARD_SIZE) -> Image.Image:
     mask = subject.getchannel("A").point(lambda a: int(a * 0.35))
     shadow.paste((82, 62, 36, 255), (x, y + int(size * 0.03)), mask)
     shadow = shadow.filter(ImageFilter.GaussianBlur(size * 0.03))
+
+    card.alpha_composite(shadow)
+    card.alpha_composite(subject, (x, y))
+    return card
+
+
+def make_plate_card(cut: Image.Image, size: int = CARD_SIZE) -> Image.Image:
+    """抠出的食物摆到插画瓷盘上：真照片食物 + 手账贴纸盘，美观且统一。"""
+    card = Image.open(PLATE_ASSET).convert("RGBA").resize((size, size), Image.LANCZOS)
+
+    target = int(size * PLATE_FOOD_RATIO)
+    scale = min(target / cut.width, target / cut.height)
+    subject = cut.resize((max(1, int(cut.width * scale)), max(1, int(cut.height * scale))), Image.LANCZOS)
+    x, y = (size - subject.width) // 2, (size - subject.height) // 2
+
+    shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    mask = subject.getchannel("A").point(lambda a: int(a * 0.25))
+    shadow.paste((82, 62, 36, 255), (x, y + int(size * 0.015)), mask)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(size * 0.015))
 
     card.alpha_composite(shadow)
     card.alpha_composite(subject, (x, y))
@@ -115,20 +137,24 @@ def is_transparent(raw: bytes) -> bool:
 
 
 def process_modes(raw: bytes, modes: list[str], circle: tuple[float, float, float] | None) -> dict[str, tuple[bytes, bytes]]:
-    """按模式产出多份结果：auto=AI 抠图（有参考圆时先聚焦裁剪），circle=参考圆直接裁（不走模型的兜底）。
-    auto 失败时不整体报错——只要 circle 还在就静默降级。"""
+    """按模式产出多份结果：plate=抠出食物摆插画盘（推荐），auto=AI 抠图直出，
+    circle=参考圆直接裁（不走模型的兜底）。AI 抠图只跑一次共用；失败时只要 circle 还在就静默降级。"""
     out: dict[str, tuple[bytes, bytes]] = {}
+    ai_cut: Image.Image | None = None
     for mode in modes:
         try:
             if mode == "circle":
                 if circle is None:
                     continue
                 cut = _crop_to_circle(raw, *circle)
+                out[mode] = (_png(cut), _png(make_card(cut)))
             else:
-                focused = _crop_region(raw, *circle) if circle else raw
-                cut = remove_bg(focused)
-            out[mode] = (_png(cut), _png(make_card(cut)))
+                if ai_cut is None:
+                    focused = _crop_region(raw, *circle) if circle else raw
+                    ai_cut = remove_bg(focused)
+                card = make_plate_card(ai_cut) if mode == "plate" else make_card(ai_cut)
+                out[mode] = (_png(ai_cut), _png(card))
         except Exception:
-            if mode == "circle" or not out and mode == modes[-1]:
+            if mode == "circle" or (not out and mode == modes[-1]):
                 raise
     return out
