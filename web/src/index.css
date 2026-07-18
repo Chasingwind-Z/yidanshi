@@ -65,6 +65,23 @@ h1 { font-size: 24px; line-height: 1.3; letter-spacing: 0.06em; margin: 8px 0 20
   box-shadow: 0 4px 14px rgba(176, 57, 43, 0.3);
 }
 
+/* 翻牌子条件面板 */
+.fanpanel {
+  background: var(--card); border: 1px solid var(--line-box); border-radius: 14px;
+  padding: 14px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.fanpanel label { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.fanpanel input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+
+/* 食历周条 */
+.weekstrip {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--card); border: 1px solid var(--line-hair); border-radius: 14px;
+  padding: 12px 14px; margin-bottom: 18px; font-size: 14px;
+}
+.weekstrip b { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.weekstrip a { color: var(--accent); border: 1px solid var(--line-box); border-radius: 6px; padding: 5px 10px; font-size: 13px; flex-shrink: 0; }
+
 /* 食单页布局 */
 .menu { display: flex; gap: 12px; }
 .cats { display: flex; flex-direction: column; gap: 8px; width: 84px; flex-shrink: 0; }

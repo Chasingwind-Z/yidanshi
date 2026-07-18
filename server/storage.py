@@ -86,7 +86,7 @@ def _parse_md(text: str) -> dict:
 
 def _dump_md(r: dict) -> str:
     meta = {k: r[k] for k in ("id", "name", "category") if r.get(k) is not None}
-    for k in ("cover", "source", "created", "kcal"):
+    for k in ("cover", "source", "created", "kcal", "minutes"):
         if r.get(k):
             meta[k] = r[k]
     fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()

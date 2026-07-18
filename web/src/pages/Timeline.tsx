@@ -61,10 +61,22 @@ export default function Timeline() {
   const days = new Map<string, Meal[]>();
   for (const m of meals) (days.get(m.date) ?? days.set(m.date, []).get(m.date)!).push(m);
 
+  const fmt = (d: Date) => d.toLocaleDateString("sv");
+  const monday = new Date(Date.now() - ((new Date().getDay() + 6) % 7) * 864e5);
+  const weekMeals = meals.filter(m => m.date >= fmt(monday));
+  const weekKcal = weekMeals.reduce((s, m) => s + (m.kcal ?? 0), 0);
+  const curMonth = fmt(new Date()).slice(0, 7);
+
   return (
     <>
       <span className="seal">历</span>
       <h1>食历</h1>
+      {meals.length > 0 && (
+        <div className="weekstrip">
+          <span>本周 <b>{weekMeals.length}</b> 餐{weekKcal > 0 && <>，合计 <b>≈{weekKcal}</b> kcal</>}</span>
+          <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer">本月食单卡</a>
+        </div>
+      )}
       {meals.length === 0 && (
         <div className="empty">
           还没有记录

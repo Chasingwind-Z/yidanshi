@@ -5,6 +5,16 @@ export default function Menu() {
   const [cats, setCats] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
   const [cat, setCat] = useState("");
+  const [fan, setFan] = useState(false);
+  const [avoid7, setAvoid7] = useState(() => localStorage.getItem("fan_avoid7") !== "0");
+  const [quick30, setQuick30] = useState(() => localStorage.getItem("fan_quick30") === "1");
+
+  function flip() {
+    localStorage.setItem("fan_avoid7", avoid7 ? "1" : "0");
+    localStorage.setItem("fan_quick30", quick30 ? "1" : "0");
+    api.random(cat, { avoidDays: avoid7 ? 7 : 0, maxMinutes: quick30 ? 30 : 0 })
+      .then(r => (location.hash = `#/recipe/${r.id}`));
+  }
 
   function load() {
     return api.recipes().then(({ categories, recipes }) => {
@@ -29,13 +39,19 @@ export default function Menu() {
         </div>
         <div className="headacts">
           {recipes.length > 0 && (
-            <button title="翻牌子：随便来一道" onClick={() =>
-              api.random(cat).then(r => (location.hash = `#/recipe/${r.id}`))}>🎴</button>
+            <button title="翻牌子：随便来一道" onClick={() => setFan(f => !f)}>🎴</button>
           )}
           <a href="#/new" title="录一道菜">＋</a>
           <a href="#/settings" title="设置">⚙</a>
         </div>
       </div>
+      {fan && (
+        <div className="fanpanel">
+          <label><input type="checkbox" checked={avoid7} onChange={e => setAvoid7(e.target.checked)} />最近 7 天没做过的</label>
+          <label><input type="checkbox" checked={quick30} onChange={e => setQuick30(e.target.checked)} />30 分钟内能做的</label>
+          <button className="btn" onClick={flip}>翻牌子！</button>
+        </div>
+      )}
       {recipes.length === 0 ? (
         <div className="empty">
           食单还空着

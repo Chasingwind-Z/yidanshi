@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import random
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -107,11 +107,22 @@ def update_recipe(rid: str, body: dict):
 
 
 @app.get("/api/random")
-def random_pick(category: str | None = None):
+def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: int = 0):
+    """翻牌子：avoid_days=N 排除最近 N 天做过的；max_minutes=M 只要 M 分钟内能做的。
+    条件内没菜时逐级放宽并带 relaxed 标记，绝不空手而归。"""
     rs = [r for r in storage.list_recipes() if category in (None, "", r["category"])]
     if not rs:
         raise HTTPException(404, "菜单还是空的")
-    return random.choice(rs)
+    relaxed = False
+    if avoid_days > 0:
+        cutoff = (date.today() - timedelta(days=avoid_days)).isoformat()
+        recent = {m["recipe_id"] for m in storage.list_meals() if m["date"] >= cutoff}
+        fresh = [r for r in rs if r["id"] not in recent]
+        rs, relaxed = (fresh, relaxed) if fresh else (rs, True)
+    if max_minutes > 0:
+        quick = [r for r in rs if r.get("minutes") and r["minutes"] <= max_minutes]
+        rs, relaxed = (quick, relaxed) if quick else (rs, True)
+    return {**random.choice(rs), "relaxed": relaxed}
 
 
 # ---------- 抠图 ----------
@@ -212,9 +223,24 @@ def add_meal(body: dict):
 
 @app.get("/api/meals")
 def meals():
-    names = {r["id"]: r["name"] for r in storage.list_recipes()}
-    out = [{**m, "recipe_name": names.get(m["recipe_id"], m["recipe_id"])} for m in storage.list_meals()]
+    rs = {r["id"]: r for r in storage.list_recipes()}
+    out = [{**m, "recipe_name": rs.get(m["recipe_id"], {}).get("name", m["recipe_id"]),
+            "kcal": rs.get(m["recipe_id"], {}).get("kcal")} for m in storage.list_meals()]
     return sorted(out, key=lambda m: (m["date"], m["id"]), reverse=True)
+
+
+@app.get("/api/monthcard/{month}")
+def month_card(month: str):
+    """月度食单回忆卡：YYYY-MM → 一张可保存分享的小结图。"""
+    from . import monthcard
+
+    try:
+        png = monthcard.render(month)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    from fastapi.responses import Response
+
+    return Response(png, media_type="image/png")
 
 
 @app.put("/api/meals/{mid}")

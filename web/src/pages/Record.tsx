@@ -93,6 +93,7 @@ export default function Record() {
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [backfill, setBackfill] = useState<{ recipe: Recipe; items: { i: number; name: string; amount: string; value: string }[] } | null>(null);
 
   useEffect(() => {
     api.recipes().then(({ categories, recipes }) => {
@@ -165,18 +166,65 @@ export default function Record() {
     if (!recipeId && !newName.trim()) return setErr("选一道菜，或者给新菜起个名字");
     setSaving(true);
     try {
-      await api.addMeal({
+      const meal = await api.addMeal({
         recipe_id: recipeId || undefined,
         new_recipe: recipeId ? undefined : { name: newName.trim(), category: newCat },
         photo_id: picked?.photo_id,
         date, rating, note,
       });
+      // 实测量回填：这道菜若有"适量"类模糊量，轻提示补一笔（可一键跳过），菜谱越做越精确
+      try {
+        const rec = await api.recipe(meal.recipe_id);
+        const fuzzy = rec.ingredients
+          .map((ing, i) => ({ i, ...ing, value: "" }))
+          .filter(x => !x.amount || /适量|少许|随意|若干|一点/.test(x.amount));
+        if (fuzzy.length > 0) {
+          setBackfill({ recipe: rec, items: fuzzy });
+          return;
+        }
+      } catch { /* 回填是锦上添花，失败不挡路 */ }
       location.hash = "#/timeline";
     } catch (e) {
       setErr((e as Error).message);
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveBackfill() {
+    if (!backfill) return;
+    const filled = backfill.items.filter(x => x.value.trim());
+    if (filled.length > 0) {
+      const ings = backfill.recipe.ingredients.map((ing, idx) => {
+        const it = filled.find(x => x.i === idx);
+        return it ? { ...ing, amount: it.value.trim() } : ing;
+      });
+      await api.saveRecipe({ ...backfill.recipe, ingredients: ings });
+    }
+    location.hash = "#/timeline";
+  }
+
+  if (backfill) {
+    return (
+      <>
+        <span className="seal">记</span>
+        <h1>记好了！顺手补一笔？</h1>
+        <div className="hint" style={{ marginTop: 0 }}>
+          「{backfill.recipe.name}」有 {backfill.items.length} 个用量还是"大概"——这次实际放了多少？填了下次就能照做（不填也没关系）。
+        </div>
+        {backfill.items.map((it, k) => (
+          <div key={it.i}>
+            <label className="f">{it.name}（现在是：{it.amount || "没写"}）</label>
+            <input placeholder="如：1勺半 / 10毫升 / 两瓣" value={it.value}
+              onChange={e => setBackfill(b => b && ({ ...b, items: b.items.map((x, j) => j === k ? { ...x, value: e.target.value } : x) }))} />
+          </div>
+        ))}
+        <div className="row" style={{ marginTop: 18 }}>
+          <button className="btn ghost" onClick={() => (location.hash = "#/timeline")}>下次再说</button>
+          <button className="btn" onClick={saveBackfill}>回填保存</button>
+        </div>
+      </>
+    );
   }
 
   const labels: Record<string, string> = { plate: "插画摆盘", auto: "AI 抠图", circle: "圆框直裁", polish: "AI 精修" };

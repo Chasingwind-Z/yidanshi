@@ -1,7 +1,7 @@
 export interface Ingredient { name: string; amount: string }
 export interface Recipe {
   id: string; name: string; category: string; cover: string; source: string; created: string;
-  kcal?: number | null;
+  kcal?: number | null; minutes?: number | null; relaxed?: boolean;
   ingredients: Ingredient[]; steps: string[]; tips: string[];
   times: number; rating: number | null;
   illust?: { ingredients: string[]; steps: string[] };
@@ -9,7 +9,7 @@ export interface Recipe {
 }
 export interface Meal {
   id: string; recipe_id: string; recipe_name: string; date: string;
-  rating: number | null; note: string; photo_card: string;
+  rating: number | null; note: string; photo_card: string; kcal?: number | null;
 }
 
 async function j<T>(res: Promise<Response>): Promise<T> {
@@ -27,8 +27,13 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(r),
     })),
-  random: (category?: string) =>
-    j<Recipe>(fetch(`/api/random${category ? `?category=${encodeURIComponent(category)}` : ""}`)),
+  random: (category?: string, opts?: { avoidDays?: number; maxMinutes?: number }) => {
+    const q = new URLSearchParams();
+    if (category) q.set("category", category);
+    if (opts?.avoidDays) q.set("avoid_days", String(opts.avoidDays));
+    if (opts?.maxMinutes) q.set("max_minutes", String(opts.maxMinutes));
+    return j<Recipe>(fetch(`/api/random?${q}`));
+  },
   meals: () => j<Meal[]>(fetch("/api/meals")),
   addMeal: (m: object) => j<Meal>(fetch("/api/meals", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(m),
@@ -61,7 +66,7 @@ export const api = {
       body: JSON.stringify({ recipe_id, kind, index }),
     })),
   aiExtract: (text: string, source: string) =>
-    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; source: string }>(
+    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; source: string }>(
       fetch("/api/ai/extract", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, source }),

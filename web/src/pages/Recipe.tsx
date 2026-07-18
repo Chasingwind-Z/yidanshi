@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { toPng } from "html-to-image";
+import { useEffect, useRef, useState } from "react";
 import { api, type Recipe } from "../api";
 
 const EMOJI: [RegExp, string][] = [
@@ -15,6 +16,22 @@ export default function RecipePage({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const [canIllust, setCanIllust] = useState(false);
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function exportCard() {
+    if (!cardRef.current) return;
+    setExporting(true);
+    try {
+      const url = await toPng(cardRef.current, { pixelRatio: 2, backgroundColor: "#fdfaf3" });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${r?.name ?? "教程卡"}.png`;
+      a.click();
+    } finally {
+      setExporting(false);
+    }
+  }
   useEffect(() => { api.recipe(id).then(setR).catch(() => setR(null)); }, [id]);
   useEffect(() => { api.aiStatus().then(s => setCanIllust(!!s.imagegen?.available)).catch(() => {}); }, []);
 
@@ -48,10 +65,10 @@ export default function RecipePage({ id }: { id: string }) {
       <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
-      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.kcal != null && `　≈${r.kcal} kcal/份`}</div>
+      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.minutes != null && `　⏱${r.minutes}分钟`}{r.kcal != null && `　≈${r.kcal}kcal`}</div>
 
       {hasTutorial ? (
-        <div className="tcard">
+        <div className="tcard" ref={cardRef}>
           <div className="tname">{r.name}</div>
           <div className="tby">by zzf</div>
           <div className="tgrid">
@@ -115,7 +132,12 @@ export default function RecipePage({ id }: { id: string }) {
       )}
 
       {r.source && <div className="source">教程来源：<a href={r.source} target="_blank" rel="noreferrer">{r.source}</a></div>}
-      <div style={{ marginTop: 16 }}>
+      <div className="row" style={{ marginTop: 16 }}>
+        {hasTutorial && (
+          <button className="btn ghost" disabled={exporting} onClick={exportCard}>
+            {exporting ? "导出中…" : "导出长图"}
+          </button>
+        )}
         <button className="btn ghost" onClick={() => setEditing(true)}>编辑做法</button>
       </div>
     </>
@@ -130,6 +152,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
   const [steps, setSteps] = useState(r.steps.join("\n"));
   const [tips, setTips] = useState(r.tips.join("\n"));
   const [kcal, setKcal] = useState(r.kcal != null ? String(r.kcal) : "");
+  const [minutes, setMinutes] = useState(r.minutes != null ? String(r.minutes) : "");
   const [err, setErr] = useState("");
 
   const [aiText, setAiText] = useState("");
@@ -148,6 +171,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       setSteps(x.steps.join("\n"));
       setTips(x.tips.join("\n"));
       if (x.kcal != null) setKcal(String(x.kcal));
+      if (x.minutes != null) setMinutes(String(x.minutes));
       setAiText("");
     } catch (e) {
       setErr(`AI 整理失败：${(e as Error).message}`);
@@ -161,6 +185,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       const nr = await api.saveRecipe({
         ...r, name, category, source,
         kcal: kcal.trim() ? Number(kcal) : null,
+        minutes: minutes.trim() ? Number(minutes) : null,
         ingredients: ings.split("\n").filter(s => s.trim()).map(line => {
           const [n, a] = line.split("|").map(s => s.trim());
           return { name: n, amount: a || "" };
@@ -225,8 +250,16 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       <textarea value={steps} onChange={e => setSteps(e.target.value)} style={{ minHeight: 140 }} />
       <label className="f">贴士（一行一条，可空）</label>
       <textarea value={tips} onChange={e => setTips(e.target.value)} />
-      <label className="f">热量估算（千卡/份，可空，AI 整理会自动填）</label>
-      <input type="number" value={kcal} onChange={e => setKcal(e.target.value)} placeholder="472" />
+      <div className="row">
+        <div>
+          <label className="f">热量（千卡/份，可空）</label>
+          <input type="number" value={kcal} onChange={e => setKcal(e.target.value)} placeholder="472" />
+        </div>
+        <div>
+          <label className="f">耗时（分钟，可空）</label>
+          <input type="number" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="25" />
+        </div>
+      </div>
       {err && <div className="err">{err}</div>}
       <div className="row" style={{ marginTop: 18 }}>
         <button className="btn ghost" onClick={() => onDone(r)}>取消</button>
