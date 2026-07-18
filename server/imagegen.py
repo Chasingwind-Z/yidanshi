@@ -80,13 +80,18 @@ def step_prompt(step: str) -> str:
 
 def _gen_openai(cfg: dict, prompt: str, size: str) -> bytes:
     key = os.environ.get(cfg.get("api_key_env", ""), "")
+    payload = {"model": cfg["model"], "prompt": prompt, "n": 1,
+               "size": size, "response_format": "b64_json"}
+    payload.update(cfg.get("extra", {}))  # 服务商特有参数，如 Seedream 的 watermark:false
     req = urllib.request.Request(
         cfg["base_url"].rstrip("/") + "/images/generations",
-        data=json.dumps({"model": cfg["model"], "prompt": prompt, "n": 1,
-                         "size": size, "response_format": "b64_json"}).encode(),
+        data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
-    with urllib.request.urlopen(req, timeout=180) as resp:
-        d = json.loads(resp.read())["data"][0]
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            d = json.loads(resp.read())["data"][0]
+    except urllib.error.HTTPError as e:  # 把服务商的报错原文透出来，方便排查参数
+        raise RuntimeError(f"生图 API {e.code}：{e.read().decode(errors='replace')[:300]}")
     if d.get("b64_json"):
         return base64.b64decode(d["b64_json"])
     with urllib.request.urlopen(d["url"], timeout=120) as img:  # 部分服务只回 url
@@ -117,11 +122,12 @@ def generate(prompt: str, size: str) -> bytes:
 
 def illustrate(recipe: dict, kind: str, index: int) -> str:
     """为菜谱的第 index 个食材/步骤生成插画，返回可访问的 URL 路径。index 从 1 开始。"""
+    cfg = _config()
     if kind == "ing":
         item = recipe["ingredients"][index - 1]
-        prompt, size = ingredient_prompt(item["name"], item.get("amount", "")), ICON_SIZE
+        prompt, size = ingredient_prompt(item["name"], item.get("amount", "")), cfg.get("size_icon", ICON_SIZE)
     else:
-        prompt, size = step_prompt(recipe["steps"][index - 1]), STEP_SIZE
+        prompt, size = step_prompt(recipe["steps"][index - 1]), cfg.get("size_step", STEP_SIZE)
 
     data = generate(prompt, size)
     out_dir = storage.PHOTOS / "illust" / recipe["id"]
