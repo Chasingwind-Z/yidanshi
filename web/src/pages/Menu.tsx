@@ -45,7 +45,7 @@ export default function Menu() {
                 <div className="body">
                   <h3>{r.name}</h3>
                   <div className="chips">
-                    <span className="chip">品味 {r.rating ?? "—"}</span>
+                    <span className="chip">品味 {r.rating?.toFixed(1) ?? "—"}</span>
                     <span className="chip">做过 {r.times} 次</span>
                   </div>
                   <a className="go" href={`#/recipe/${r.id}`}><span>查看做法</span><span>›</span></a>

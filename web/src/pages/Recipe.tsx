@@ -22,7 +22,7 @@ export default function RecipePage({ id }: { id: string }) {
     <>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
-      <div className="stats">品味 {r.rating ?? "—"}　被做过 {r.times} 次　{r.category}</div>
+      <div className="stats">品味 {r.rating?.toFixed(1) ?? "—"}　被做过 {r.times} 次　{r.category}</div>
 
       {hasTutorial ? (
         <div className="tcard">
