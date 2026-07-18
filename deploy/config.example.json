@@ -10,8 +10,10 @@
     "base_url": "https://ark.cn-beijing.volces.com/api/v3",
     "api_key_env": "ARK_API_KEY",
     "model": "doubao-seedream-5-0-pro-260628",
-    "size_icon": "2048x2048",
-    "size_step": "2304x1728",
-    "extra": { "watermark": false }
+    "size_icon": "1440x1440",
+    "size_step": "1728x1296",
+    "extra": {
+      "watermark": false
+    }
   }
 }
