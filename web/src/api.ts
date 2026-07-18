@@ -25,16 +25,35 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(r),
     })),
-  random: () => j<Recipe>(fetch("/api/random")),
+  random: (category?: string) =>
+    j<Recipe>(fetch(`/api/random${category ? `?category=${encodeURIComponent(category)}` : ""}`)),
   meals: () => j<Meal[]>(fetch("/api/meals")),
   addMeal: (m: object) => j<Meal>(fetch("/api/meals", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(m),
   })),
-  cutout: (file: File, alreadyCut: boolean) => {
+  updateMeal: (id: string, patch: object) => j<Meal>(fetch(`/api/meals/${id}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+  })),
+  deleteMeal: (id: string) => j<{ ok: boolean }>(fetch(`/api/meals/${id}`, { method: "DELETE" })),
+  seedExamples: () => j<{ added: number }>(fetch("/api/seed-examples", { method: "POST" })),
+  cutout: (file: File, opts: { alreadyCut?: boolean; mode?: string; circle?: { cx: number; cy: number; r: number } }) => {
     const fd = new FormData();
     fd.append("photo", file);
-    fd.append("already_cut", String(alreadyCut));
-    return j<{ photo_id: string; raw: string; cut: string; card: string }>(
+    fd.append("already_cut", String(!!opts.alreadyCut));
+    fd.append("mode", opts.mode ?? "auto");
+    if (opts.circle) {
+      fd.append("cx", String(opts.circle.cx));
+      fd.append("cy", String(opts.circle.cy));
+      fd.append("r", String(opts.circle.r));
+    }
+    return j<{ results: { mode: string; photo_id: string; card: string }[] }>(
       fetch("/api/cutout", { method: "POST", body: fd }));
   },
+  aiStatus: () => j<{ backend: string; model: string; available: boolean }>(fetch("/api/ai/status")),
+  aiExtract: (text: string, source: string) =>
+    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; source: string }>(
+      fetch("/api/ai/extract", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, source }),
+      })),
 };

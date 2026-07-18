@@ -1,7 +1,19 @@
 # 把社交媒体教程录入一箪食
 
-数据就是文件：一道菜 = `data/recipes/<id>.md`。给 AI 助手（Claude / Codex 等）
-下面这段指令 + 教程原文（链接、文字、截图皆可），它写出的文件放进目录即完成录入。
+**最省事的路：App 内直接粘。** 菜单页「＋」→ 录一道菜 → 把教程原文（抖音长按可复制文案）
+粘进「AI 整理」框 → 一键生成食材/步骤/贴士。AI 通道自动探测本机 `claude`/`codex` CLI，
+或在 `data/config.json` 配 OpenAI 兼容 API：
+
+```json
+{"llm": {"backend": "openai", "base_url": "https://api.deepseek.com/v1",
+         "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-chat"}}
+```
+
+（DeepSeek 目前纯文本、不支持图片输入；带图提炼请用 claude CLI 通道。）
+
+**另一条路：让 AI 助手直接写文件。** 数据就是文件：一道菜 = `data/recipes/<id>.md`。
+给 AI 助手（Claude / Codex 等）下面这段指令 + 教程原文（链接、文字、截图皆可），
+它写出的文件放进目录即完成录入。
 
 ## 给 AI 的指令模板
 

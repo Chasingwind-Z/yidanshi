@@ -14,12 +14,13 @@ export default function RecipePage({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   useEffect(() => { api.recipe(id).then(setR).catch(() => setR(null)); }, [id]);
 
-  if (!r) return <div className="loading">加载中…</div>;
+  if (!r) return <div className="loading">加载中</div>;
   if (editing) return <Editor r={r} onDone={nr => { setR(nr); setEditing(false); }} />;
 
   const hasTutorial = r.ingredients.length > 0 || r.steps.length > 0;
   return (
     <>
+      <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
       <div className="stats">品味 {r.rating?.toFixed(1) ?? "—"}　被做过 {r.times} 次　{r.category}</div>
@@ -64,7 +65,12 @@ export default function RecipePage({ id }: { id: string }) {
           )}
         </div>
       ) : (
-        <div className="empty">还没录做法——点下面「编辑做法」，或把教程丢给 AI 助手帮你整理进来</div>
+        <div className="empty">
+          还没录做法
+          <div style={{ marginTop: 16, maxWidth: 300, marginInline: "auto" }}>
+            <button className="btn" onClick={() => setEditing(true)}>录入做法（可粘教程让 AI 整理）</button>
+          </div>
+        </div>
       )}
 
       {r.source && <div className="source">教程来源：<a href={r.source} target="_blank" rel="noreferrer">{r.source}</a></div>}
@@ -75,7 +81,7 @@ export default function RecipePage({ id }: { id: string }) {
   );
 }
 
-function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }) {
+export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }) {
   const [name, setName] = useState(r.name);
   const [category, setCategory] = useState(r.category);
   const [source, setSource] = useState(r.source);
@@ -83,6 +89,29 @@ function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }) {
   const [steps, setSteps] = useState(r.steps.join("\n"));
   const [tips, setTips] = useState(r.tips.join("\n"));
   const [err, setErr] = useState("");
+
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [ai, setAi] = useState<{ backend: string; available: boolean } | null>(null);
+  useEffect(() => { api.aiStatus().then(setAi).catch(() => setAi(null)); }, []);
+
+  async function aiFill() {
+    setErr("");
+    setAiBusy(true);
+    try {
+      const x = await api.aiExtract(aiText, source);
+      if (x.name) setName(x.name);
+      if (x.category) setCategory(x.category);
+      setIngs(x.ingredients.map(i => i.amount ? `${i.name} | ${i.amount}` : i.name).join("\n"));
+      setSteps(x.steps.join("\n"));
+      setTips(x.tips.join("\n"));
+      setAiText("");
+    } catch (e) {
+      setErr(`AI 整理失败：${(e as Error).message}`);
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function save() {
     try {
@@ -104,7 +133,21 @@ function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }) {
   return (
     <>
       <div className="brand">EDIT</div>
-      <h1>编辑做法</h1>
+      <h1>{r.id ? "编辑做法" : "录一道菜"}</h1>
+
+      {ai?.available && (
+        <div className="aibox">
+          <div className="t">把教程原文粘进来（抖音/小红书文案、随手记的做法都行），AI 帮你整理成菜谱</div>
+          <textarea value={aiText} onChange={e => setAiText(e.target.value)}
+            placeholder="例：先把牛排切条腌10分钟，芦笋焯水40秒…（长按抖音文案可复制）" />
+          <div style={{ marginTop: 8 }}>
+            <button className="btn ghost" disabled={aiBusy || !aiText.trim()} onClick={aiFill}>
+              {aiBusy ? "AI 整理中，可能要十几秒…" : `AI 整理（${ai.backend}）`}
+            </button>
+          </div>
+        </div>
+      )}
+
       <label className="f">菜名</label>
       <input value={name} onChange={e => setName(e.target.value)} />
       <div className="row">

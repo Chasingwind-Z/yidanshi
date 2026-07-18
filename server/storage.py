@@ -155,13 +155,38 @@ def list_meals() -> list[dict]:
     return json.loads(MEALS_FILE.read_text(encoding="utf-8"))
 
 
+def _write_meals(meals: list[dict]) -> None:
+    MEALS_FILE.write_text(json.dumps(meals, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
 def add_meal(meal: dict) -> dict:
     with _lock:
         meals = list_meals()
         meal["id"] = f"m{datetime.now().strftime('%Y%m%d%H%M%S')}"
         meals.append(meal)
-        MEALS_FILE.write_text(json.dumps(meals, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        _write_meals(meals)
     return meal
+
+
+def update_meal(mid: str, patch: dict) -> dict | None:
+    with _lock:
+        meals = list_meals()
+        for m in meals:
+            if m["id"] == mid:
+                m.update({k: patch[k] for k in ("date", "rating", "note") if k in patch})
+                _write_meals(meals)
+                return m
+    return None
+
+
+def delete_meal(mid: str) -> bool:
+    with _lock:
+        meals = list_meals()
+        kept = [m for m in meals if m["id"] != mid]
+        if len(kept) == len(meals):
+            return False
+        _write_meals(kept)
+    return True
 
 
 def recipe_stats() -> dict[str, dict]:

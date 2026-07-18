@@ -13,11 +13,11 @@
 
 ## 功能
 
-- 📷 **拍照即记录** — 做完饭拍一张，本地 [rembg](https://github.com/danielgatis/rembg) 自动抠出碗盘、合成深色底菜卡（3–4 秒/张，不花钱不上传云端；也可直接上传 iPhone 相册长按抠好的透明图）
-- 📖 **自己的菜单** — 一碗饭 / 一碗面 / 一碗汤 / 一碗菜分类浏览，每道菜有品味评分、做过几次；「随便来一份」帮你决定今天吃什么
-- 🎨 **教程卡** — 食材图标 + 编号步骤 + 小贴士的做法卡片，支持为每道菜生成统一画风的 AI 插画（`scripts/gen_illust_prompts.py` 产出 prompt 清单，出图后放回目录即自动显示）
-- 🤖 **AI 友好的数据** — 菜谱是 `data/recipes/*.md`，记录是 `data/meals.json`。把社交媒体教程丢给 AI 助手按 [docs/recipe-ingest.md](docs/recipe-ingest.md) 整理成文件即完成录入，页面上也能直接编辑
-- 🏠 **自托管** — 跑在自己电脑上，手机浏览器加到主屏当 App 用（PWA）
+- 📷 **拍照即记录** — 拍完用圆框参考线把盘子框准，本地 [rembg](https://github.com/danielgatis/rembg) AI 抠图和「圆框直裁」两种效果各出一张任选（3–4 秒，不花钱不上传云端）；iPhone 长按抠好的透明图直接传，自动识别
+- 📖 **自己的菜单** — 一碗饭 / 一碗面 / 一碗汤 / 一碗菜分类浏览，每道菜有品味评分、做过几次；🎲 在当前分类里「随便来一份」；记录可改可删
+- 🎨 **教程卡** — 印刷菜谱卡质感：楷体菜名、食材图标、编号步骤、小贴士；可为每道菜生成统一画风的 AI 插画（`scripts/gen_illust_prompts.py` 产出 prompt 清单，出图后放回目录即自动显示）
+- 🤖 **AI 整理教程** — 把抖音/小红书教程文案粘进 App，AI 直接整理成结构化菜谱。通道可配置：本机 `claude` / `codex` CLI（零配置，复用订阅），或任意 OpenAI 兼容 API（DeepSeek、Qwen 等，`data/config.json` 三行配置）；菜谱本身是 `data/recipes/*.md`，让 AI 助手直接写文件也行（[docs/recipe-ingest.md](docs/recipe-ingest.md)）
+- 🏠 **自托管** — 跑在自己电脑上，手机浏览器加到主屏当 App 用（PWA，支持长按图标直达「记一餐」）
 
 ## 快速开始
 

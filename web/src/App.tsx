@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Menu from "./pages/Menu";
+import NewRecipe from "./pages/NewRecipe";
 import RecipePage from "./pages/Recipe";
 import Record from "./pages/Record";
 import Timeline from "./pages/Timeline";
@@ -20,6 +21,7 @@ export default function App() {
   if (route.startsWith("/recipe/")) page = <RecipePage id={decodeURIComponent(route.slice(8))} />;
   else if (route === "/record") page = <Record />;
   else if (route === "/timeline") page = <Timeline />;
+  else if (route === "/new") page = <NewRecipe />;
 
   const tab = route.startsWith("/recipe/") ? "/" : route;
   return (
