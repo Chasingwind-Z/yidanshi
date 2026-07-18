@@ -1,7 +1,7 @@
 ---
 id: lusun-niupai
 name: 芦笋牛排
-category: 一碗菜
+category: 小炒
 source: "https://v.douyin.com/EUzyG23PoEI/"
 created: 2026-07-17
 ---

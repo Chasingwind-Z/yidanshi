@@ -1,7 +1,7 @@
 ---
 id: paomian-plus
 name: 豪华泡面
-category: 一碗面
+category: 面点
 created: 2026-07-17
 ---
 

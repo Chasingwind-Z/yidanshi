@@ -1,7 +1,7 @@
 ---
 id: jiarou-chaofan
 name: 鸡肉蛋炒饭
-category: 一碗饭
+category: 饭粥
 created: 2026-07-17
 ---
 

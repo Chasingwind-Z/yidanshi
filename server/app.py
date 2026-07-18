@@ -43,7 +43,11 @@ def recipe(rid: str):
     if r is None:
         raise HTTPException(404, "no such recipe")
     s = storage.recipe_stats().get(rid, {})
-    return {**r, "times": s.get("times", 0), "rating": s.get("rating")}
+    # 朱批：这道菜历次记录的备注，红批注上教程卡
+    notes = [{"date": m["date"], "note": m["note"]}
+             for m in storage.list_meals() if m["recipe_id"] == rid and m.get("note")]
+    return {**r, "times": s.get("times", 0), "rating": s.get("rating"),
+            "annotations": sorted(notes, key=lambda n: n["date"], reverse=True)[:5]}
 
 
 @app.post("/api/recipes")

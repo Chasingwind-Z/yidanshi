@@ -47,7 +47,7 @@ export default function RecipePage({ id }: { id: string }) {
       <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
-      <div className="stats">品味 {r.rating?.toFixed(1) ?? "—"}　被做过 {r.times} 次　{r.category}</div>
+      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}</div>
 
       {hasTutorial ? (
         <div className="tcard">
@@ -85,6 +85,14 @@ export default function RecipePage({ id }: { id: string }) {
             <div className="tips">
               <b>小贴士：</b>
               {r.tips.map((t, i) => <p key={i}>{t}</p>)}
+            </div>
+          )}
+          {(r.annotations?.length ?? 0) > 0 && (
+            <div className="zhupi">
+              <b>朱批</b>
+              {r.annotations!.map((a, i) => (
+                <p key={i}><span>{a.date.slice(5).replace("-", "/")}</span>{a.note}</p>
+              ))}
             </div>
           )}
           {canIllust && missing.length > 0 && (
@@ -162,9 +170,13 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
     }
   }
 
+  const DEFAULT_CATS = ["饭粥", "面点", "羹汤", "小炒", "甜点"];
+  const cats = DEFAULT_CATS.includes(category) || !category ? DEFAULT_CATS : [category, ...DEFAULT_CATS];
+  const [customCat, setCustomCat] = useState(false);
+
   return (
     <>
-      <div className="brand">EDIT</div>
+      <span className="seal">录</span>
       <h1>{r.id ? "编辑做法" : "录一道菜"}</h1>
 
       {ai?.available && (
@@ -185,9 +197,18 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       <div className="row">
         <div>
           <label className="f">分类</label>
-          <select value={category} onChange={e => setCategory(e.target.value)}>
-            {["一碗饭", "一碗面", "一碗汤", "一碗菜", "一碗甜"].map(c => <option key={c}>{c}</option>)}
-          </select>
+          {customCat ? (
+            <input autoFocus placeholder="自定义分类名" value={category}
+              onChange={e => setCategory(e.target.value)} />
+          ) : (
+            <select value={category} onChange={e => {
+              if (e.target.value === "__custom") { setCustomCat(true); setCategory(""); }
+              else setCategory(e.target.value);
+            }}>
+              {cats.map(c => <option key={c}>{c}</option>)}
+              <option value="__custom">自定义…</option>
+            </select>
+          )}
         </div>
         <div>
           <label className="f">教程来源（链接，可空）</label>

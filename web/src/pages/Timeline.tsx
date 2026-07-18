@@ -63,8 +63,8 @@ export default function Timeline() {
 
   return (
     <>
-      <div className="brand">TIMELINE</div>
-      <h1>吃饭时间线</h1>
+      <span className="seal">历</span>
+      <h1>食历</h1>
       {meals.length === 0 && (
         <div className="empty">
           还没有记录

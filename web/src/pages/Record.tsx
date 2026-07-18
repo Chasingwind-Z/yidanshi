@@ -166,7 +166,7 @@ export default function Record() {
 
   return (
     <>
-      <div className="brand">RECORD</div>
+      <span className="seal">记</span>
       <h1>记一餐</h1>
 
       <label className="f">今天做的饭</label>

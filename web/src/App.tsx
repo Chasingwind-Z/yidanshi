@@ -28,7 +28,7 @@ export default function App() {
     <div className="app">
       <div className="page">{page}</div>
       <nav className="tabbar">
-        {[["/", "菜单"], ["/record", "记一餐"], ["/timeline", "时间线"]].map(([to, label]) => (
+        {[["/", "食单"], ["/record", "记一餐"], ["/timeline", "食历"]].map(([to, label]) => (
           <a key={to} href={`#${to}`} className={tab === to ? "on" : ""}>{label}</a>
         ))}
       </nav>

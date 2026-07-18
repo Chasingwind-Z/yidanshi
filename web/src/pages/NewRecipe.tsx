@@ -2,7 +2,7 @@ import { Editor } from "./Recipe";
 import type { Recipe } from "../api";
 
 const empty: Recipe = {
-  id: "", name: "", category: "一碗菜", cover: "", source: "", created: "",
+  id: "", name: "", category: "小炒", cover: "", source: "", created: "",
   ingredients: [], steps: [], tips: [], times: 0, rating: null,
 };
 

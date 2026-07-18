@@ -4,6 +4,7 @@ export interface Recipe {
   ingredients: Ingredient[]; steps: string[]; tips: string[];
   times: number; rating: number | null;
   illust?: { ingredients: string[]; steps: string[] };
+  annotations?: { date: string; note: string }[];
 }
 export interface Meal {
   id: string; recipe_id: string; recipe_name: string; date: string;

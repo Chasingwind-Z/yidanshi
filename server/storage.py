@@ -19,7 +19,7 @@ RECIPES_DIR = DATA / "recipes"
 MEALS_FILE = DATA / "meals.json"
 PHOTOS = DATA / "photos"
 
-DEFAULT_CATEGORIES = ["一碗饭", "一碗面", "一碗汤", "一碗菜", "一碗甜"]
+DEFAULT_CATEGORIES = ["饭粥", "面点", "羹汤", "小炒", "甜点"]  # 随园食单章法，支持自定义追加
 
 _lock = threading.Lock()
 

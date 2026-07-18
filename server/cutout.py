@@ -13,7 +13,7 @@ from PIL import Image, ImageFilter
 
 MODEL = os.environ.get("YIDANSHI_MODEL", "isnet-general-use")
 CARD_SIZE = 1024
-CARD_BG = (0, 0, 0, 255)  # 纯黑底，与页面底色无缝融合
+CARD_BG = (244, 239, 227, 255)  # 暖米白宣纸底（与前端 --bg 一致），盘子落在纸上
 SUBJECT_RATIO = 0.78         # 主体占卡片宽度比例
 
 
@@ -44,10 +44,10 @@ def make_card(cut: Image.Image, size: int = CARD_SIZE) -> Image.Image:
     subject = cut.resize((max(1, int(cut.width * scale)), max(1, int(cut.height * scale))), Image.LANCZOS)
     x, y = (size - subject.width) // 2, (size - subject.height) // 2
 
-    # 投影：主体 alpha 放大模糊，向下偏移
+    # 投影：主体 alpha 放大模糊，向下偏移（暖褐柔影，适配纸底）
     shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    mask = subject.getchannel("A").point(lambda a: int(a * 0.55))
-    shadow.paste((0, 0, 0, 255), (x, y + int(size * 0.03)), mask)
+    mask = subject.getchannel("A").point(lambda a: int(a * 0.35))
+    shadow.paste((82, 62, 36, 255), (x, y + int(size * 0.03)), mask)
     shadow = shadow.filter(ImageFilter.GaussianBlur(size * 0.03))
 
     card.alpha_composite(shadow)

@@ -24,23 +24,23 @@ export default function Menu() {
     <>
       <div className="pagehead">
         <div>
-          <div className="brand">YIDANSHI</div>
-          <h1>今天吃什么</h1>
+          <span className="seal">箪</span>
+          <h1>我的食单</h1>
         </div>
         <div className="headacts">
           {recipes.length > 0 && (
-            <button title="随便来一份" onClick={() =>
-              api.random(cat).then(r => (location.hash = `#/recipe/${r.id}`))}>🎲</button>
+            <button title="翻牌子：随便来一道" onClick={() =>
+              api.random(cat).then(r => (location.hash = `#/recipe/${r.id}`))}>🎴</button>
           )}
           <a href="#/new" title="录一道菜">＋</a>
         </div>
       </div>
       {recipes.length === 0 ? (
         <div className="empty">
-          菜单还是空的
+          食单还空着
           <div className="row" style={{ marginTop: 20, maxWidth: 340, marginInline: "auto" }}>
             <a className="btn" href="#/record">记下第一顿饭</a>
-            <button className="btn ghost" onClick={() => api.seedExamples().then(load)}>先看看示例菜单</button>
+            <button className="btn ghost" onClick={() => api.seedExamples().then(load)}>先看看示例食单</button>
           </div>
         </div>
       ) : (
@@ -57,8 +57,8 @@ export default function Menu() {
                 <div className="body">
                   <h3>{r.name}</h3>
                   <div className="chips">
-                    <span className="chip">品味 {r.rating?.toFixed(1) ?? "—"}</span>
-                    <span className="chip">做过 {r.times} 次</span>
+                    <span className="chip">★ {r.rating?.toFixed(1) ?? "—"}</span>
+                    <span className="chip">做过 {r.times} 回</span>
                   </div>
                   <div className="go"><span>查看做法</span><span>›</span></div>
                 </div>
