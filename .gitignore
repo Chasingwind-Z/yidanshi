@@ -1,0 +1,19 @@
+# cross-agent handoff log (local only, never pushed)
+PROGRESS.md
+PROGRESS.archive.md
+
+# user's private meal data (repo ships example data only)
+data/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+node_modules/
+dist/
+
+# env & misc
+.env
+.DS_Store
