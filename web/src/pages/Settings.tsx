@@ -1,0 +1,135 @@
+import { useEffect, useState } from "react";
+
+type Cfg = Record<string, any>;
+interface ConfigPayload {
+  llm: Cfg; imagegen: Cfg;
+  status: { backend: string; model: string; available: boolean; imagegen: { backend: string; model: string; available: boolean } };
+  secrets: Record<string, boolean>;
+}
+
+async function getConfig(): Promise<ConfigPayload> {
+  return (await fetch("/api/config")).json();
+}
+
+export default function Settings() {
+  const [cfg, setCfg] = useState<ConfigPayload | null>(null);
+  const [llm, setLlm] = useState<Cfg>({});
+  const [img, setImg] = useState<Cfg>({});
+  const [llmKey, setLlmKey] = useState("");
+  const [imgKey, setImgKey] = useState("");
+  const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getConfig().then(c => { setCfg(c); setLlm(c.llm); setImg(c.imagegen); });
+  }, []);
+
+  if (!cfg) return <div className="loading">加载中</div>;
+
+  async function save() {
+    setSaving(true);
+    setMsg("");
+    try {
+      const secrets: Record<string, string> = {};
+      if (llmKey && llm.api_key_env) secrets[llm.api_key_env] = llmKey;
+      if (imgKey && img.api_key_env) secrets[img.api_key_env] = imgKey;
+      const r = await fetch("/api/config", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ llm, imagegen: img, secrets }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      const nc: ConfigPayload = await r.json();
+      setCfg(nc); setLlm(nc.llm); setImg(nc.imagegen); setLlmKey(""); setImgKey("");
+      setMsg("已保存，立即生效");
+    } catch (e) {
+      setMsg(`保存失败：${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const S = cfg.status;
+  const keyState = (env?: string) => env ? (cfg!.secrets[env] ? "已配置，留空则不改" : "未配置，粘贴 key") : "先填环境变量名";
+
+  return (
+    <>
+      <span className="seal">设</span>
+      <h1>设置</h1>
+
+      <div className="aibox">
+        <div className="t">通道状态：文字 {S.available ? `✓ ${S.backend}${S.model ? ` (${S.model})` : ""}` : "✗ 不可用"}
+          ；生图 {S.imagegen.available ? `✓ ${S.imagegen.model || S.imagegen.backend}` : "✗ 不可用"}</div>
+      </div>
+
+      <h1 style={{ fontSize: 18, marginTop: 24 }}>文字 AI（整理菜谱 / 估热量）</h1>
+      <label className="f">通道</label>
+      <select value={llm.backend ?? ""} onChange={e => setLlm({ ...llm, backend: e.target.value })}>
+        <option value="">自动探测本机 claude / codex CLI（推荐，零配置）</option>
+        <option value="claude-cli">claude CLI</option>
+        <option value="codex-cli">codex CLI</option>
+        <option value="openai">OpenAI 兼容 API（DeepSeek / Qwen 等）</option>
+      </select>
+      {llm.backend === "openai" && (
+        <>
+          <label className="f">Base URL</label>
+          <input value={llm.base_url ?? ""} onChange={e => setLlm({ ...llm, base_url: e.target.value })}
+            placeholder="https://api.deepseek.com/v1" />
+          <div className="row">
+            <div>
+              <label className="f">模型</label>
+              <input value={llm.model ?? ""} onChange={e => setLlm({ ...llm, model: e.target.value })} placeholder="deepseek-chat" />
+            </div>
+            <div>
+              <label className="f">Key 环境变量名</label>
+              <input value={llm.api_key_env ?? ""} onChange={e => setLlm({ ...llm, api_key_env: e.target.value })} placeholder="DEEPSEEK_API_KEY" />
+            </div>
+          </div>
+          <label className="f">API Key（{keyState(llm.api_key_env)}）</label>
+          <input type="password" value={llmKey} onChange={e => setLlmKey(e.target.value)} autoComplete="off" />
+        </>
+      )}
+
+      <h1 style={{ fontSize: 18, marginTop: 28 }}>生图 AI（插画 / 精修）</h1>
+      <label className="f">Base URL（OpenAI 兼容 /images/generations）</label>
+      <input value={img.base_url ?? ""} onChange={e => setImg({ ...img, backend: "openai-images", base_url: e.target.value })}
+        placeholder="https://ark.cn-beijing.volces.com/api/v3" />
+      <div className="row">
+        <div>
+          <label className="f">生图模型</label>
+          <input value={img.model ?? ""} onChange={e => setImg({ ...img, model: e.target.value })} placeholder="doubao-seedream-…" />
+        </div>
+        <div>
+          <label className="f">精修模型（可空，省钱用 lite）</label>
+          <input value={img.edit_model ?? ""} onChange={e => setImg({ ...img, edit_model: e.target.value })} placeholder="留空 = 同生图模型" />
+        </div>
+      </div>
+      <div className="row">
+        <div>
+          <label className="f">Key 环境变量名</label>
+          <input value={img.api_key_env ?? ""} onChange={e => setImg({ ...img, api_key_env: e.target.value })} placeholder="ARK_API_KEY" />
+        </div>
+        <div>
+          <label className="f">API Key（{keyState(img.api_key_env)}）</label>
+          <input type="password" value={imgKey} onChange={e => setImgKey(e.target.value)} autoComplete="off" />
+        </div>
+      </div>
+      <label className="toggle" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, color: "var(--dim)", fontSize: 14 }}>
+        <input type="checkbox" style={{ width: "auto" }} checked={img.extra?.watermark === false}
+          onChange={e => setImg({ ...img, extra: { ...(img.extra ?? {}), watermark: !e.target.checked } })} />
+        去除平台水印（Seedream 支持）
+      </label>
+
+      {msg && <div className="hint" style={{ marginTop: 12 }}>{msg}</div>}
+      <div style={{ marginTop: 18 }}>
+        <button className="btn" disabled={saving} onClick={save}>{saving ? "保存中…" : "保存设置"}</button>
+      </div>
+
+      <h1 style={{ fontSize: 18, marginTop: 28 }}>数据</h1>
+      <div className="hint" style={{ lineHeight: 2 }}>
+        所有数据都是本机 <code>data/</code> 目录下的文件（菜谱 Markdown、记录 JSON、照片）。<br />
+        备份：<code>./scripts/manage.sh backup</code>；手机访问：http://电脑IP:18100 加入主屏。<br />
+        密钥保存在 <code>data/secrets.env</code>，不入 git、不上传。
+      </div>
+    </>
+  );
+}

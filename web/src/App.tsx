@@ -3,6 +3,7 @@ import Menu from "./pages/Menu";
 import NewRecipe from "./pages/NewRecipe";
 import RecipePage from "./pages/Recipe";
 import Record from "./pages/Record";
+import Settings from "./pages/Settings";
 import Timeline from "./pages/Timeline";
 
 function useRoute() {
@@ -22,6 +23,7 @@ export default function App() {
   else if (route === "/record") page = <Record />;
   else if (route === "/timeline") page = <Timeline />;
   else if (route === "/new") page = <NewRecipe />;
+  else if (route === "/settings") page = <Settings />;
 
   const tab = route.startsWith("/recipe/") ? "/" : route;
   return (

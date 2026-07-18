@@ -28,14 +28,17 @@ _EXTRA = [os.path.expanduser("~/.local/bin"), "/opt/homebrew/bin", "/usr/local/b
 os.environ["PATH"] = os.environ.get("PATH", "") + ":" + ":".join(_EXTRA)
 
 PROMPT = """把下面这段做菜内容整理成结构化菜谱。它可能是社交媒体教程文案，也可能是用户自己随口描述的做法回忆——口语、跳跃、不完整都正常。规则：
-- 忠实整理，不要发明原文没有的食材和步骤；用量没说就写"适量"
+- 忠实整理，不要发明原文没有的食材和步骤
+- 食材**主料和调料都要列全**（步骤里提到的生抽/蚝油/盐/糖/淀粉等也单独列出）；用量原文有就用原文的，没有就按常见做法估一个（如"1勺""10毫升""少许"），主料尽量给克数或个数
 - 步骤合并成3-6步，每步一句话说清楚动作和火候/时长
 - 原文里的个人经验（"下次少放盐"这类）归入 tips
+- kcal：按食材用量估算单人份总热量（整数千卡），无法估算给 null
 只输出一个 JSON 对象，不要任何其他文字：
-{{"name": "菜名", "category": "从 一碗饭/一碗面/一碗汤/一碗菜/一碗甜 中选一个",
+{{"name": "菜名", "category": "从 饭粥/面点/羹汤/小炒/甜点 中选一个",
   "ingredients": [{{"name": "食材名", "amount": "用量"}}],
   "steps": ["..."],
-  "tips": ["没有就给空数组"]}}
+  "tips": ["没有就给空数组"],
+  "kcal": 472}}
 
 原文：
 {text}"""
@@ -94,6 +97,7 @@ def extract_recipe(text: str, source: str = "") -> dict:
     if not m:
         raise RuntimeError(f"AI 输出里没有 JSON：{out[:200]}")
     r = json.loads(m.group())
+    kcal = r.get("kcal")
     return {
         "name": str(r.get("name", "")).strip(),
         "category": r.get("category") if r.get("category") in storage.DEFAULT_CATEGORIES else storage.DEFAULT_CATEGORIES[3],
@@ -101,5 +105,6 @@ def extract_recipe(text: str, source: str = "") -> dict:
                         for i in r.get("ingredients", []) if i.get("name")],
         "steps": [str(s).strip() for s in r.get("steps", []) if str(s).strip()],
         "tips": [str(t).strip() for t in r.get("tips", []) if str(t).strip()],
+        "kcal": int(kcal) if isinstance(kcal, (int, float)) else None,
         "source": source,
     }

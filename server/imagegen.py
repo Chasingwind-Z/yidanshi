@@ -141,16 +141,19 @@ def refine(raw: bytes, mime: str = "image/jpeg") -> bytes:
 
 
 def illustrate(recipe: dict, kind: str, index: int) -> str:
-    """为菜谱的第 index 个食材/步骤生成插画，返回可访问的 URL 路径。index 从 1 开始。"""
+    """为菜谱的第 index 个食材/步骤生成插画，返回可访问的 URL 路径。index 从 1 开始。
+    食材图标存全局共享库（同名食材全食单复用，不重复花钱）；步骤图按菜谱存。"""
     cfg = _config()
     if kind == "ing":
-        item = recipe["ingredients"][index - 1]
-        prompt, size = ingredient_prompt(item["name"], item.get("amount", "")), cfg.get("size_icon", ICON_SIZE)
-    else:
-        prompt, size = step_prompt(recipe["steps"][index - 1]), cfg.get("size_step", STEP_SIZE)
+        name = recipe["ingredients"][index - 1]["name"]
+        path = storage.ING_ICON_DIR / f"{name}.png"
+        if not path.exists():
+            storage.ING_ICON_DIR.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(generate(ingredient_prompt(name), cfg.get("size_icon", ICON_SIZE)))
+        return f"/photos/illust/ingredients/{name}.png"
 
-    data = generate(prompt, size)
+    data = generate(step_prompt(recipe["steps"][index - 1]), cfg.get("size_step", STEP_SIZE))
     out_dir = storage.PHOTOS / "illust" / recipe["id"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / f"{kind}-{index}.png").write_bytes(data)
-    return f"/photos/illust/{recipe['id']}/{kind}-{index}.png"
+    (out_dir / f"step-{index}.png").write_bytes(data)
+    return f"/photos/illust/{recipe['id']}/step-{index}.png"

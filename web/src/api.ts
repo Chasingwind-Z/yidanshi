@@ -1,6 +1,7 @@
 export interface Ingredient { name: string; amount: string }
 export interface Recipe {
   id: string; name: string; category: string; cover: string; source: string; created: string;
+  kcal?: number | null;
   ingredients: Ingredient[]; steps: string[]; tips: string[];
   times: number; rating: number | null;
   illust?: { ingredients: string[]; steps: string[] };
@@ -60,7 +61,7 @@ export const api = {
       body: JSON.stringify({ recipe_id, kind, index }),
     })),
   aiExtract: (text: string, source: string) =>
-    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; source: string }>(
+    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; source: string }>(
       fetch("/api/ai/extract", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, source }),

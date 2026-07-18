@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { api, type Recipe } from "../api";
 
 const EMOJI: [RegExp, string][] = [
-  [/牛/, "🥩"], [/猪|排骨|培根|火腿/, "🥓"], [/鸡/, "🍗"], [/鱼/, "🐟"], [/虾/, "🦐"],
-  [/蛋/, "🥚"], [/豆腐|豆/, "🧊"], [/葱/, "🌱"], [/蒜/, "🧄"], [/姜/, "🫚"],
-  [/辣椒|椒/, "🌶️"], [/番茄|西红柿/, "🍅"], [/土豆|薯/, "🥔"], [/萝卜/, "🥕"],
-  [/芦笋|菜|瓜|笋|菇|芹|蒿|苗/, "🥬"], [/米|饭/, "🍚"], [/面|粉/, "🍜"], [/玉米/, "🌽"],
+  [/蛋/, "🥚"], [/玉米/, "🌽"], [/番茄|西红柿/, "🍅"], [/土豆|红薯|薯/, "🥔"], [/萝卜/, "🥕"],
+  [/牛/, "🥩"], [/猪|排骨|培根|火腿/, "🥓"], [/鸡|鸭|鹅/, "🍗"], [/鱼/, "🐟"], [/虾/, "🦐"],
+  [/豆腐|豆/, "🧊"], [/蒜/, "🧄"], [/姜/, "🫚"], [/葱/, "🌱"], [/辣椒|花椒|胡椒|椒/, "🌶️"],
+  [/油|生抽|老抽|酱|醋|料酒|盐|糖|淀粉/, "🧂"], [/米|饭|粥/, "🍚"], [/面|粉/, "🍜"],
+  [/芦笋|菜|瓜|笋|菇|芹|蒿|苗|叶/, "🥬"],
 ];
 const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.slice(0, 1);
 
@@ -47,7 +48,7 @@ export default function RecipePage({ id }: { id: string }) {
       <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
-      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}</div>
+      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.kcal != null && `　≈${r.kcal} kcal/份`}</div>
 
       {hasTutorial ? (
         <div className="tcard">
@@ -128,6 +129,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
   const [ings, setIngs] = useState(r.ingredients.map(i => i.amount ? `${i.name} | ${i.amount}` : i.name).join("\n"));
   const [steps, setSteps] = useState(r.steps.join("\n"));
   const [tips, setTips] = useState(r.tips.join("\n"));
+  const [kcal, setKcal] = useState(r.kcal != null ? String(r.kcal) : "");
   const [err, setErr] = useState("");
 
   const [aiText, setAiText] = useState("");
@@ -145,6 +147,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       setIngs(x.ingredients.map(i => i.amount ? `${i.name} | ${i.amount}` : i.name).join("\n"));
       setSteps(x.steps.join("\n"));
       setTips(x.tips.join("\n"));
+      if (x.kcal != null) setKcal(String(x.kcal));
       setAiText("");
     } catch (e) {
       setErr(`AI 整理失败：${(e as Error).message}`);
@@ -157,6 +160,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
     try {
       const nr = await api.saveRecipe({
         ...r, name, category, source,
+        kcal: kcal.trim() ? Number(kcal) : null,
         ingredients: ings.split("\n").filter(s => s.trim()).map(line => {
           const [n, a] = line.split("|").map(s => s.trim());
           return { name: n, amount: a || "" };
@@ -221,6 +225,8 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       <textarea value={steps} onChange={e => setSteps(e.target.value)} style={{ minHeight: 140 }} />
       <label className="f">贴士（一行一条，可空）</label>
       <textarea value={tips} onChange={e => setTips(e.target.value)} />
+      <label className="f">热量估算（千卡/份，可空，AI 整理会自动填）</label>
+      <input type="number" value={kcal} onChange={e => setKcal(e.target.value)} placeholder="472" />
       {err && <div className="err">{err}</div>}
       <div className="row" style={{ marginTop: 18 }}>
         <button className="btn ghost" onClick={() => onDone(r)}>取消</button>

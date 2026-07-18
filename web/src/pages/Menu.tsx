@@ -33,6 +33,7 @@ export default function Menu() {
               api.random(cat).then(r => (location.hash = `#/recipe/${r.id}`))}>🎴</button>
           )}
           <a href="#/new" title="录一道菜">＋</a>
+          <a href="#/settings" title="设置">⚙</a>
         </div>
       </div>
       {recipes.length === 0 ? (
@@ -59,6 +60,7 @@ export default function Menu() {
                   <div className="chips">
                     <span className="chip">★ {r.rating?.toFixed(1) ?? "—"}</span>
                     <span className="chip">做过 {r.times} 回</span>
+                    {r.kcal != null && <span className="chip">≈{r.kcal} kcal</span>}
                   </div>
                   <div className="go"><span>查看做法</span><span>›</span></div>
                 </div>

@@ -1,6 +1,8 @@
 """一箪食 · 后端。启动：scripts/dev.sh 或 .venv/bin/uvicorn server.app:app --port 18100"""
 from __future__ import annotations
 
+import json
+import os
 import random
 from datetime import date, datetime
 from pathlib import Path
@@ -15,14 +17,53 @@ app = FastAPI(title="一箪食 yidanshi")
 storage.init_dirs()
 
 # API 密钥从 data/secrets.env 加载（launchd 环境读不到 shell 变量；data/ 不进 git）
-_secrets = storage.DATA / "secrets.env"
-if _secrets.exists():
-    import os
-    for line in _secrets.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip())
+_SECRETS_FILE = storage.DATA / "secrets.env"
+
+
+def _load_secrets() -> None:
+    if _SECRETS_FILE.exists():
+        for line in _SECRETS_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_secrets()
+
+
+# ---------- 设置 ----------
+
+def _config_payload() -> dict:
+    cfg = json.loads(llm.CONFIG_FILE.read_text(encoding="utf-8")) if llm.CONFIG_FILE.exists() else {}
+    envs = {c.get("api_key_env") for c in (cfg.get("llm", {}), cfg.get("imagegen", {})) if c.get("api_key_env")}
+    return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}),
+            "status": {**llm.backend_status(), "imagegen": imagegen.backend_status()},
+            "secrets": {e: bool(os.environ.get(e)) for e in envs}}
+
+
+@app.get("/api/config")
+def get_config():
+    return _config_payload()
+
+
+@app.put("/api/config")
+def put_config(body: dict):
+    cfg = {}
+    for section in ("llm", "imagegen"):
+        clean = {k: v for k, v in (body.get(section) or {}).items() if v not in ("", None)}
+        if clean:
+            cfg[section] = clean
+    llm.CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    secrets = {k: v.strip() for k, v in (body.get("secrets") or {}).items() if v and v.strip()}
+    if secrets:
+        lines = _SECRETS_FILE.read_text(encoding="utf-8").splitlines() if _SECRETS_FILE.exists() else []
+        kept = [ln for ln in lines if not any(ln.strip().startswith(f"{k}=") for k in secrets)]
+        kept += [f"{k}={v}" for k, v in secrets.items()]
+        _SECRETS_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        os.environ.update(secrets)
+    return _config_payload()
 
 
 # ---------- 菜谱 ----------

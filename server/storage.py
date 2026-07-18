@@ -18,6 +18,7 @@ DATA = ROOT / "data"
 RECIPES_DIR = DATA / "recipes"
 MEALS_FILE = DATA / "meals.json"
 PHOTOS = DATA / "photos"
+ING_ICON_DIR = PHOTOS / "illust" / "ingredients"  # 食材图标全局共享库（按食材名，全食单复用）
 
 DEFAULT_CATEGORIES = ["饭粥", "面点", "羹汤", "小炒", "甜点"]  # 随园食单章法，支持自定义追加
 
@@ -68,6 +69,7 @@ def _parse_md(text: str) -> dict:
 
     tips = [ln.strip().lstrip("-").strip() for ln in sections.get("贴士", "").splitlines() if ln.strip()]
 
+    kcal = meta.get("kcal")
     return {
         "id": meta.get("id", ""),
         "name": meta.get("name", ""),
@@ -75,6 +77,7 @@ def _parse_md(text: str) -> dict:
         "cover": meta.get("cover") or "",
         "source": meta.get("source") or "",
         "created": str(meta.get("created") or ""),
+        "kcal": int(kcal) if isinstance(kcal, (int, float)) else None,
         "ingredients": ingredients,
         "steps": steps,
         "tips": tips,
@@ -83,7 +86,7 @@ def _parse_md(text: str) -> dict:
 
 def _dump_md(r: dict) -> str:
     meta = {k: r[k] for k in ("id", "name", "category") if r.get(k) is not None}
-    for k in ("cover", "source", "created"):
+    for k in ("cover", "source", "created", "kcal"):
         if r.get(k):
             meta[k] = r[k]
     fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
@@ -121,11 +124,19 @@ def get_recipe(rid: str) -> dict | None:
         return None
     r = _parse_md(p.read_text(encoding="utf-8"))
     r["id"] = rid
-    # 插画目录约定：data/photos/illust/<rid>/ing-<n>.png、step-<n>.png、cover.png
+    # 插画目录约定：食材图标在全局共享库 illust/ingredients/<食材名>.png（旧的按菜谱 ing-<n>.png 兼容），
+    # 步骤图按菜谱 illust/<rid>/step-<n>.png
     illust = PHOTOS / "illust" / rid
+
+    def ing_url(n: int) -> str:
+        shared = ING_ICON_DIR / f"{r['ingredients'][n - 1]['name']}.png"
+        if shared.exists():
+            return f"/photos/illust/ingredients/{shared.name}"
+        legacy = illust / f"ing-{n}.png"
+        return f"/photos/illust/{rid}/{legacy.name}" if legacy.exists() else ""
+
     r["illust"] = {
-        "ingredients": [f"/photos/illust/{rid}/{f.name}" if (f := illust / f"ing-{n}.png").exists() else ""
-                        for n in range(1, len(r["ingredients"]) + 1)],
+        "ingredients": [ing_url(n) for n in range(1, len(r["ingredients"]) + 1)],
         "steps": [f"/photos/illust/{rid}/{f.name}" if (f := illust / f"step-{n}.png").exists() else ""
                   for n in range(1, len(r["steps"]) + 1)],
     }
