@@ -62,6 +62,8 @@ def compute(ingredients: list[dict]) -> dict | None:
     covered = 0
     for ing in ingredients:
         g = ing.get("grams")
+        if not isinstance(g, (int, float)) or g <= 0:  # 负数/零/非数字一律当无克重
+            g = None
         info = (lookup(ing["name"]) or cached(ing["name"])) if g else None
         if not g or not info or info.get("kcal_per_100g") is None:
             per_item.append(None)

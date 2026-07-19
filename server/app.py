@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -49,11 +50,17 @@ def get_config():
 
 @app.put("/api/config")
 def put_config(body: dict):
-    cfg = {}
+    # 读现有配置为基底，只覆盖 body 里出现的段，保留 guest 等未提及的顶层字段
+    # （历史 bug：整体重建会静默吞掉 guest token，作废分享链接）
+    cfg = json.loads(llm.CONFIG_FILE.read_text(encoding="utf-8")) if llm.CONFIG_FILE.exists() else {}
     for section in ("llm", "imagegen", "goal"):
+        if section not in body:
+            continue
         clean = {k: v for k, v in (body.get(section) or {}).items() if v not in ("", None)}
         if clean:
             cfg[section] = clean
+        else:
+            cfg.pop(section, None)  # 传空段 = 清除（如清空每日目标）
     llm.CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     secrets = {k: v.strip() for k, v in (body.get("secrets") or {}).items() if v and v.strip()}
@@ -338,23 +345,55 @@ def ai_extract(body: dict):
 
 # ---------- 记一餐 ----------
 
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _clean_rating(v):
+    if v is None:
+        return None
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "评分要是 1-5 的整数")
+    if not 1 <= n <= 5:
+        raise HTTPException(400, "评分要在 1-5 之间")
+    return n
+
+
+def _clean_date(v) -> str:
+    if not v:
+        return date.today().isoformat()
+    v = str(v)
+    if not _DATE_RE.match(v):
+        raise HTTPException(400, "日期格式应为 YYYY-MM-DD")
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        raise HTTPException(400, "不是有效日期")
+    return v
+
+
 @app.post("/api/meals")
 def add_meal(body: dict):
     rid = body.get("recipe_id")
     if not rid and body.get("new_recipe", {}).get("name"):
         rid = storage.save_recipe(body["new_recipe"])["id"]
     if not rid or storage.get_recipe(rid) is None:
-        raise HTTPException(400, "recipe_id or new_recipe required")
+        raise HTTPException(400, "先选一道菜，或给新菜起个名字")
+    rating = _clean_rating(body.get("rating"))
+    mdate = _clean_date(body.get("date"))
 
+    r = storage.get_recipe(rid)
     card = f"/photos/cards/{body['photo_id']}.png" if body.get("photo_id") else ""
     meal = storage.add_meal({
         "recipe_id": rid,
-        "date": body.get("date") or date.today().isoformat(),
-        "rating": body.get("rating"),
-        "note": body.get("note", ""),
+        "date": mdate,
+        "rating": rating,
+        "note": str(body.get("note", ""))[:500],
         "photo_card": card,
+        # 快照当次每餐热量：日后菜谱被编辑，历史食历不被追溯篡改
+        "kcal": nutrition.per_serving_kcal(r),
     })
-    r = storage.get_recipe(rid)
     if card and not r["cover"]:
         storage.set_cover(rid, card)
     return meal
@@ -363,10 +402,16 @@ def add_meal(body: dict):
 @app.get("/api/meals")
 def meals():
     rs = {r["id"]: r for r in storage.list_recipes()}
-    kcals = {rid: nutrition.per_serving_kcal(r) for rid, r in rs.items()}
-    out = [{**m,
-            "recipe_name": rs.get(m["recipe_id"], {}).get("name") or m.get("recipe_name") or m["recipe_id"],
-            "kcal": kcals.get(m["recipe_id"])} for m in storage.list_meals()]
+    live = {rid: nutrition.per_serving_kcal(r) for rid, r in rs.items()}
+    out = []
+    for m in storage.list_meals():
+        # 快照优先；老记录（无快照）回退现算，行为向后兼容
+        kcal = m.get("kcal")
+        if kcal is None:
+            kcal = live.get(m["recipe_id"])
+        out.append({**m,
+                    "recipe_name": rs.get(m["recipe_id"], {}).get("name") or m.get("recipe_name") or m["recipe_id"],
+                    "kcal": kcal})
     return sorted(out, key=lambda m: (m["date"], m["id"]), reverse=True)
 
 
@@ -423,8 +468,11 @@ def guest_menu(t: str):
 @app.post("/api/guest/order")
 def guest_order(body: dict):
     _check_guest(body.get("t", ""))
+    raw = body.get("items", [])
+    if not isinstance(raw, list):
+        raise HTTPException(400, "点单格式不对")
     names = {r["id"]: r["name"] for r in storage.list_recipes()}
-    items = [{"recipe_id": rid, "name": names[rid]} for rid in body.get("items", []) if rid in names]
+    items = [{"recipe_id": rid, "name": names[rid]} for rid in raw if isinstance(rid, str) and rid in names]
     if not items:
         raise HTTPException(400, "先点至少一道菜")
     orders = _orders()
@@ -464,7 +512,27 @@ def get_shopping():
 
 @app.put("/api/shopping")
 def put_shopping(body: dict):
-    doc = {"items": body.get("items", [])}
+    # 服务端按 name 合并去重（前端 mergeShopping 已合并；这里兜底防绕过前端直调 API 膨胀）
+    merged: dict[str, dict] = {}
+    for it in body.get("items", []):
+        if not isinstance(it, dict) or not it.get("name"):
+            continue
+        name = str(it["name"]).strip()
+        if not name:
+            continue
+        e = merged.get(name)
+        if e is None:
+            merged[name] = {"name": name, "amounts": str(it.get("amounts", "")),
+                            "recipes": str(it.get("recipes", "")), "checked": bool(it.get("checked")),
+                            "seasoning": bool(it.get("seasoning"))}
+        else:
+            rs = [x for x in (e["recipes"].split("、") + str(it.get("recipes", "")).split("、")) if x]
+            e["recipes"] = "、".join(dict.fromkeys(rs))
+            amts = [x for x in (e["amounts"], str(it.get("amounts", ""))) if x]
+            e["amounts"] = " + ".join(amts)
+            e["checked"] = e["checked"] or bool(it.get("checked"))
+    items = sorted(merged.values(), key=lambda x: x["seasoning"])
+    doc = {"items": items}
     SHOPPING_FILE.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return doc
 
@@ -557,9 +625,13 @@ DIST = storage.ROOT / "web" / "dist"
 if DIST.exists():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
+    _DIST_ROOT = DIST.resolve()
+
     @app.get("/{path:path}")
     def spa(path: str):
-        f = DIST / path
-        if path and f.is_file():
-            return FileResponse(f)
+        if path:
+            f = (DIST / path).resolve()
+            # 防目录穿越：解析后必须仍在 dist 内，否则一律回退首页
+            if f.is_file() and f.is_relative_to(_DIST_ROOT):
+                return FileResponse(f)
         return FileResponse(DIST / "index.html")

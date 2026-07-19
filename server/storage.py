@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import threading
 import unicodedata
 from datetime import date, datetime
@@ -102,11 +103,13 @@ def _dump_md(r: dict) -> str:
     fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
     lines = [f"---\n{fm}\n---", "", "## 食材", ""]
     for i in r.get("ingredients", []):
+        g = i.get("grams")
+        g = round(g) if isinstance(g, (int, float)) and g > 0 else None  # 负/零/非法克重不落库
         line = f"- {i['name']}"
-        if i.get("amount") or i.get("grams"):
+        if i.get("amount") or g:
             line += f" | {i.get('amount', '')}"
-        if i.get("grams"):
-            line += f" | {round(i['grams'])}g"
+        if g:
+            line += f" | {g}g"
         lines.append(line)
     lines += ["", "## 步骤", ""]
     lines += [f"{n}. {s}" for n, s in enumerate(r.get("steps", []), 1)]
@@ -189,7 +192,13 @@ def _write_meals(meals: list[dict]) -> None:
 def add_meal(meal: dict) -> dict:
     with _lock:
         meals = list_meals()
-        meal["id"] = f"m{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # 唯一 id：秒级时间戳 + 短随机后缀，杜绝同秒双击/重试碰撞（碰撞会导致删除连坐）
+        used = {m.get("id") for m in meals}
+        base = f"m{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        mid = base
+        while mid in used:
+            mid = f"{base}-{secrets.token_hex(2)}"
+        meal["id"] = mid
         # 快照菜名：菜谱日后被删/改名，食历记录依然可读
         r = get_recipe(meal.get("recipe_id", ""))
         if r is not None:
@@ -221,11 +230,13 @@ def update_meal(mid: str, patch: dict) -> dict | None:
 def delete_meal(mid: str) -> bool:
     with _lock:
         meals = list_meals()
-        kept = [m for m in meals if m["id"] != mid]
-        if len(kept) == len(meals):
-            return False
-        _write_meals(kept)
-    return True
+        # 只删第一条匹配：历史数据可能存在同 id（老版本秒级 id 碰撞），避免一次连坐删多条
+        for i, m in enumerate(meals):
+            if m["id"] == mid:
+                del meals[i]
+                _write_meals(meals)
+                return True
+    return False
 
 
 def recipe_stats() -> dict[str, dict]:
