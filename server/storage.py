@@ -74,7 +74,7 @@ def _parse_md(text: str) -> dict:
 
     tips = [ln.strip().lstrip("-").strip() for ln in sections.get("贴士", "").splitlines() if ln.strip()]
 
-    kcal = meta.get("kcal")
+    kcal, servings, minutes = meta.get("kcal"), meta.get("servings"), meta.get("minutes")
     return {
         "id": meta.get("id", ""),
         "name": meta.get("name", ""),
@@ -83,6 +83,9 @@ def _parse_md(text: str) -> dict:
         "source": meta.get("source") or "",
         "created": str(meta.get("created") or ""),
         "kcal": int(kcal) if isinstance(kcal, (int, float)) else None,
+        "minutes": int(minutes) if isinstance(minutes, (int, float)) else None,
+        "difficulty": meta.get("difficulty") if meta.get("difficulty") in ("简单", "中等", "硬菜") else None,
+        "servings": int(servings) if isinstance(servings, (int, float)) and servings >= 1 else 1,
         "ingredients": ingredients,
         "steps": steps,
         "tips": tips,
@@ -94,6 +97,8 @@ def _dump_md(r: dict) -> str:
     for k in ("cover", "source", "created", "kcal", "minutes", "difficulty"):
         if r.get(k):
             meta[k] = r[k]
+    if r.get("servings") and int(r["servings"]) > 1:
+        meta["servings"] = int(r["servings"])
     fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
     lines = [f"---\n{fm}\n---", "", "## 食材", ""]
     for i in r.get("ingredients", []):

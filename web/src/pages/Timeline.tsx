@@ -7,11 +7,13 @@ function WeekReport() {
   if (!r || r.meals === 0) return null;
   return (
     <div className="weekreport">
+      {r.kcal_avg != null && <p>平均每餐 <b>≈{r.kcal_avg}</b> kcal <span className="dimtext">（{r.meals} 餐合计 ≈{r.kcal}）</span></p>}
       <p>蛋白质出现在 <b>{r.protein_meals}/{r.meals}</b> 餐 · 蔬菜 <b>{r.veg_kinds.length}</b> 种
         {r.veg_kinds.length > 0 && <span className="dimtext">（{r.veg_kinds.slice(0, 6).join("、")}{r.veg_kinds.length > 6 ? "…" : ""}）</span>}
       </p>
       <p className="dimtext">{Object.entries(r.categories).map(([c, n]) => `${c}×${n}`).join(" · ")}</p>
       {r.tip && <p className="tipline">「{r.tip}」</p>}
+      <p className="dimtext">热量为估算值，看趋势就好</p>
     </div>
   );
 }
@@ -80,7 +82,6 @@ export default function Timeline() {
   const fmt = (d: Date) => d.toLocaleDateString("sv");
   const monday = new Date(Date.now() - ((new Date().getDay() + 6) % 7) * 864e5);
   const weekMeals = meals.filter(m => m.date >= fmt(monday));
-  const weekKcal = weekMeals.reduce((s, m) => s + (m.kcal ?? 0), 0);
   const curMonth = fmt(new Date()).slice(0, 7);
 
   return (
@@ -89,7 +90,7 @@ export default function Timeline() {
       <h1>食历</h1>
       {meals.length > 0 && (
         <div className="weekstrip" onClick={() => setShowReport(v => !v)} style={{ cursor: "pointer" }}>
-          <span>本周 <b>{weekMeals.length}</b> 餐{weekKcal > 0 && <>，合计 <b>≈{weekKcal}</b> kcal</>}{weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
+          <span>本周 <b>{weekMeals.length}</b> 餐{weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
           {meals.some(m => m.date.startsWith(curMonth)) && (
             <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer"
               onClick={e => e.stopPropagation()}>本月食单卡</a>

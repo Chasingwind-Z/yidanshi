@@ -99,7 +99,7 @@ export default function Menu() {
                   <div className="chips">
                     <span className="chip">★ {r.rating?.toFixed(1) ?? "—"}</span>
                     <span className="chip">做过 {r.times} 回</span>
-                    {r.kcal != null && <span className="chip">≈{r.kcal} kcal</span>}
+                    {r.kcal_effective != null && <span className="chip">≈{r.kcal_effective} kcal{(r.servings ?? 1) > 1 ? "/餐" : ""}</span>}
                   </div>
                   <div className="go"><span>查看做法</span><span>›</span></div>
                 </div>

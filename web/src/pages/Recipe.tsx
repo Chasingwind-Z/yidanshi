@@ -14,10 +14,11 @@ const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.
 interface IngInfo {
   name: string; kcal_per_100g: number | null; protein_g: number | null;
   fat_g: number | null; carb_g: number | null; benefits: string[]; tips: string[]; source?: string;
+  matched?: string; text_source?: string;
 }
 
 /** 食材小百科：点食材弹出，AI 生成一次全食单缓存复用 */
-function IngredientSheet({ name, amount, iconUrl, onClose }: { name: string; amount?: string; iconUrl?: string; onClose: () => void }) {
+function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number; onClose: () => void }) {
   const [info, setInfo] = useState<IngInfo | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -36,7 +37,9 @@ function IngredientSheet({ name, amount, iconUrl, onClose }: { name: string; amo
           <div className="icon">{iconUrl ? <img src={iconUrl} alt={name} /> : icon(name)}</div>
           <div>
             <b>{name}</b>
-            {amount && <div className="dimtext">本菜用量：{amount}</div>}
+            {(amount || grams) && (
+              <div className="dimtext">本菜用量：{amount}{grams ? `（${grams}g${itemKcal != null ? ` · 折算 ≈${itemKcal}kcal` : ""}）` : ""}</div>
+            )}
           </div>
           <button className="more" onClick={onClose} aria-label="关闭">✕</button>
         </div>
@@ -59,7 +62,10 @@ function IngredientSheet({ name, amount, iconUrl, onClose }: { name: string; amo
                 {info.tips.map((t, i) => <p key={i}>{t}</p>)}
               </div>
             )}
-            <div className="dimtext" style={{ marginTop: 10 }}>* 每100克参考值 · 来源：{info.source ?? "常见参考值"} · 仅供参考</div>
+            <div className="dimtext" style={{ marginTop: 10 }}>
+              * 每100克参考值{info.matched ? `（按「${info.matched}」计）` : ""} · 数值：{info.source ?? "常见参考值"}
+              {info.text_source && info.benefits.length > 0 ? ` · 功效贴士：${info.text_source}` : ""} · 仅供参考
+            </div>
           </>
         )}
       </div>
@@ -75,7 +81,7 @@ export default function RecipePage({ id }: { id: string }) {
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
   const cardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
-  const [ingSheet, setIngSheet] = useState<{ name: string; amount?: string; iconUrl?: string } | null>(null);
+  const [ingSheet, setIngSheet] = useState<{ name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number } | null>(null);
 
   async function exportCard() {
     if (!cardRef.current) return;
@@ -133,10 +139,18 @@ export default function RecipePage({ id }: { id: string }) {
       <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
-      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.difficulty && `　${r.difficulty}`}{r.minutes != null && `　⏱${r.minutes}分钟`}{r.kcal != null && `　≈${r.kcal}kcal`}</div>
-      {r.nutrition && (
+      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.difficulty && `　${r.difficulty}`}{r.minutes != null && `　⏱${r.minutes}分钟`}</div>
+      {r.kcal_whole != null && (
         <div className="stats" style={{ marginTop: -14 }}>
-          按食材合计 ≈{r.nutrition.kcal}kcal · 蛋白{r.nutrition.protein_g}g · 脂肪{r.nutrition.fat_g}g · 碳水{r.nutrition.carb_g}g（{r.nutrition.covered}/{r.nutrition.total} 项计入）
+          {(r.servings ?? 1) > 1
+            ? <>整锅 ≈{r.kcal_whole} kcal · 约 {r.servings} 餐 · 每餐 ≈{r.kcal_effective}</>
+            : <>≈{r.kcal_whole} kcal</>}
+          {r.kcal_source === "实算" && r.nutrition && (
+            <span className="dimtext">　蛋白{r.nutrition.protein_g}g · 脂肪{r.nutrition.fat_g}g · 碳水{r.nutrition.carb_g}g
+              {r.nutrition.missing && r.nutrition.missing.length > 0 && r.nutrition.missing.length <= 2 && `（${r.nutrition.missing.join("、")}未计入）`}
+            </span>
+          )}
+          {r.kcal_source === "AI估算" && <span className="dimtext">　AI 估算，录克重后自动改为实算</span>}
         </div>
       )}
 
@@ -149,7 +163,8 @@ export default function RecipePage({ id }: { id: string }) {
               <h4>食材准备</h4>
               {r.ingredients.map((ing, i) => (
                 <button className="ing" key={i} onClick={() =>
-                  setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: r.illust?.ingredients[i] || undefined })}>
+                  setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: r.illust?.ingredients[i] || undefined,
+                    itemKcal: r.nutrition?.per_item?.[i] ?? undefined, grams: ing.grams ?? undefined })}>
                   <div className="icon">
                     {r.illust?.ingredients[i]
                       ? <img src={r.illust.ingredients[i]} alt={ing.name} />
@@ -157,7 +172,6 @@ export default function RecipePage({ id }: { id: string }) {
                   </div>
                   <div className="n">{ing.name}</div>
                   {ing.amount && <div className="a">{ing.amount}</div>}
-                  {r.nutrition?.per_item?.[i] != null && <div className="a" style={{ color: "var(--accent)" }}>≈{r.nutrition.per_item[i]}kcal</div>}
                 </button>
               ))}
               <div className="dimtext" style={{ textAlign: "center", marginTop: 4 }}>点食材看小百科</div>
@@ -245,6 +259,15 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
   const [kcal, setKcal] = useState(r.kcal != null ? String(r.kcal) : "");
   const [difficulty, setDifficulty] = useState(r.difficulty ?? "");
   const [minutes, setMinutes] = useState(r.minutes != null ? String(r.minutes) : "");
+  const [servings, setServings] = useState(r.servings && r.servings > 1 ? String(r.servings) : "1");
+  const [preview, setPreview] = useState<{ kcal?: number; missing?: string[] } | null>(null);
+  useEffect(() => {
+    const ings = rows.filter(x => x.name.trim()).map(x => ({
+      name: x.name.trim(), amount: x.amount, grams: x.grams.trim() ? Number(x.grams) : null }));
+    if (ings.every(x => !x.grams)) { setPreview(null); return; }
+    const t = setTimeout(() => api.nutritionPreview(ings).then(p => setPreview(p.kcal ? p : null)).catch(() => {}), 500);
+    return () => clearTimeout(t);
+  }, [rows]);
   const [err, setErr] = useState("");
 
   const [aiText, setAiText] = useState("");
@@ -283,6 +306,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
         kcal: kcal.trim() ? Number(kcal) : null,
         minutes: minutes.trim() ? Number(minutes) : null,
         difficulty: difficulty || null,
+        servings: Math.max(1, Number(servings) || 1),
         ingredients: rows.filter(x => x.name.trim()).map(x => ({
           name: x.name.trim(), amount: x.amount.trim(),
           grams: x.grams.trim() ? Number(x.grams) : null,
@@ -351,6 +375,11 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
         </div>
       ))}
       <datalist id="ingnames">{nameDb.names.map(n => <option key={n} value={n} />)}</datalist>
+      {preview?.kcal != null && (
+        <div className="dimtext" style={{ marginTop: 6 }}>
+          按食材合计 ≈{preview.kcal} kcal{preview.missing && preview.missing.length > 0 && preview.missing.length <= 3 && `（${preview.missing.join("、")}未计入）`}
+        </div>
+      )}
       <button className="btn ghost" style={{ marginTop: 6 }} onClick={() => setRows(rs => [...rs, { name: "", amount: "", grams: "" }])}>＋ 加一个食材</button>
       <label className="f">步骤（一行一步）</label>
       <textarea value={steps} onChange={e => setSteps(e.target.value)} style={{ minHeight: 140 }}
@@ -359,12 +388,16 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       <textarea value={tips} onChange={e => setTips(e.target.value)} />
       <div className="row">
         <div>
-          <label className="f">热量（千卡/份）</label>
+          <label className="f">热量（留空自动按食材算）</label>
           <input type="number" value={kcal} onChange={e => setKcal(e.target.value)} placeholder="472" />
         </div>
         <div>
           <label className="f">耗时（分钟）</label>
           <input type="number" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="25" />
+        </div>
+        <div>
+          <label className="f">这锅够吃几餐</label>
+          <input type="number" min={1} value={servings} onChange={e => setServings(e.target.value)} />
         </div>
         <div>
           <label className="f">难度</label>

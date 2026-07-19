@@ -2,7 +2,8 @@ export interface Ingredient { name: string; amount: string; grams?: number | nul
 export interface Recipe {
   id: string; name: string; category: string; cover: string; source: string; created: string;
   kcal?: number | null; minutes?: number | null; difficulty?: string | null; relaxed?: boolean;
-  nutrition?: { kcal: number; protein_g: number; fat_g: number; carb_g: number; covered: number; total: number; per_item?: (number | null)[] } | null;
+  nutrition?: { kcal: number; protein_g: number; fat_g: number; carb_g: number; covered: number; total: number; per_item?: (number | null)[]; missing?: string[] } | null;
+  kcal_effective?: number | null; kcal_whole?: number | null; kcal_source?: string; servings?: number;
   ingredients: Ingredient[]; steps: string[]; tips: string[];
   times: number; rating: number | null;
   illust?: { ingredients: string[]; steps: string[] };
@@ -47,8 +48,14 @@ export const api = {
   savePantry: (items: string[]) => j<{ items: string[] }>(fetch("/api/pantry", {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
   })),
-  weekreport: () => j<{ meals: number; kcal: number; protein_meals: number; veg_kinds: string[];
+  weekreport: () => j<{ meals: number; kcal: number; kcal_avg: number | null; protein_meals: number; veg_kinds: string[];
     categories: Record<string, number>; tip: string }>(fetch("/api/weekreport")),
+  nutritionPreview: (ingredients: Ingredient[]) =>
+    j<{ kcal?: number; protein_g?: number; fat_g?: number; carb_g?: number; missing?: string[] }>(
+      fetch("/api/nutrition/preview", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ingredients }),
+      })),
   meals: () => j<Meal[]>(fetch("/api/meals")),
   addMeal: (m: object) => j<Meal>(fetch("/api/meals", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(m),

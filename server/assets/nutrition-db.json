@@ -550,5 +550,945 @@
   "carb_g": 31.5,
   "default_g": 3,
   "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "芹菜": {
+  "kcal_per_100g": 20,
+  "protein_g": 1.2,
+  "fat_g": 0.2,
+  "carb_g": 4.5,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "韭菜": {
+  "kcal_per_100g": 25,
+  "protein_g": 2.4,
+  "fat_g": 0.4,
+  "carb_g": 4.5,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "莴笋": {
+  "kcal_per_100g": 15,
+  "protein_g": 1.0,
+  "fat_g": 0.1,
+  "carb_g": 2.8,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "山药": {
+  "kcal_per_100g": 57,
+  "protein_g": 1.9,
+  "fat_g": 0.2,
+  "carb_g": 12.4,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "莲藕": {
+  "kcal_per_100g": 47,
+  "protein_g": 1.2,
+  "fat_g": 0.2,
+  "carb_g": 11.5,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "豆角": {
+  "kcal_per_100g": 30,
+  "protein_g": 2.5,
+  "fat_g": 0.2,
+  "carb_g": 5.7,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "四季豆": {
+  "kcal_per_100g": 31,
+  "protein_g": 2.0,
+  "fat_g": 0.4,
+  "carb_g": 5.7,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "蒜苔": {
+  "kcal_per_100g": 61,
+  "protein_g": 2.0,
+  "fat_g": 0.1,
+  "carb_g": 15.4,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "花菜": {
+  "kcal_per_100g": 24,
+  "protein_g": 2.1,
+  "fat_g": 0.2,
+  "carb_g": 4.6,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "包菜": {
+  "kcal_per_100g": 24,
+  "protein_g": 1.5,
+  "fat_g": 0.2,
+  "carb_g": 4.6,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "生菜": {
+  "kcal_per_100g": 15,
+  "protein_g": 1.3,
+  "fat_g": 0.3,
+  "carb_g": 2.0,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "油麦菜": {
+  "kcal_per_100g": 15,
+  "protein_g": 1.4,
+  "fat_g": 0.4,
+  "carb_g": 2.1,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "大白菜": {
+  "kcal_per_100g": 18,
+  "protein_g": 1.5,
+  "fat_g": 0.1,
+  "carb_g": 3.2,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "娃娃菜": {
+  "kcal_per_100g": 15,
+  "protein_g": 1.5,
+  "fat_g": 0.2,
+  "carb_g": 2.6,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "杏鲍菇": {
+  "kcal_per_100g": 35,
+  "protein_g": 1.3,
+  "fat_g": 0.1,
+  "carb_g": 8.3,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "平菇": {
+  "kcal_per_100g": 24,
+  "protein_g": 1.9,
+  "fat_g": 0.3,
+  "carb_g": 4.6,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "竹笋": {
+  "kcal_per_100g": 23,
+  "protein_g": 2.6,
+  "fat_g": 0.2,
+  "carb_g": 3.6,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "苦瓜": {
+  "kcal_per_100g": 22,
+  "protein_g": 1.0,
+  "fat_g": 0.1,
+  "carb_g": 4.9,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "丝瓜": {
+  "kcal_per_100g": 20,
+  "protein_g": 1.0,
+  "fat_g": 0.2,
+  "carb_g": 4.2,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "西葫芦": {
+  "kcal_per_100g": 19,
+  "protein_g": 0.8,
+  "fat_g": 0.2,
+  "carb_g": 3.8,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "绿豆芽": {
+  "kcal_per_100g": 16,
+  "protein_g": 1.7,
+  "fat_g": 0.1,
+  "carb_g": 2.6,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "黄豆芽": {
+  "kcal_per_100g": 47,
+  "protein_g": 4.5,
+  "fat_g": 1.6,
+  "carb_g": 4.5,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "彩椒": {
+  "kcal_per_100g": 26,
+  "protein_g": 1.0,
+  "fat_g": 0.2,
+  "carb_g": 6.0,
+  "default_g": 60,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鸭肉": {
+  "kcal_per_100g": 240,
+  "protein_g": 15.5,
+  "fat_g": 19.7,
+  "carb_g": 0.2,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "羊肉": {
+  "kcal_per_100g": 203,
+  "protein_g": 19.0,
+  "fat_g": 14.1,
+  "carb_g": 0.0,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鸡肉": {
+  "kcal_per_100g": 167,
+  "protein_g": 19.3,
+  "fat_g": 9.4,
+  "carb_g": 1.3,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鸡爪": {
+  "kcal_per_100g": 254,
+  "protein_g": 23.9,
+  "fat_g": 16.4,
+  "carb_g": 2.7,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "牛腩": {
+  "kcal_per_100g": 332,
+  "protein_g": 17.1,
+  "fat_g": 29.3,
+  "carb_g": 0.0,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "猪蹄": {
+  "kcal_per_100g": 260,
+  "protein_g": 22.6,
+  "fat_g": 18.8,
+  "carb_g": 0.0,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "猪肉": {
+  "kcal_per_100g": 395,
+  "protein_g": 13.2,
+  "fat_g": 37.0,
+  "carb_g": 2.4,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "猪瘦肉": {
+  "kcal_per_100g": 143,
+  "protein_g": 20.3,
+  "fat_g": 6.2,
+  "carb_g": 1.5,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "猪肝": {
+  "kcal_per_100g": 129,
+  "protein_g": 19.3,
+  "fat_g": 3.5,
+  "carb_g": 5.0,
+  "default_g": 80,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "带鱼": {
+  "kcal_per_100g": 127,
+  "protein_g": 17.7,
+  "fat_g": 4.9,
+  "carb_g": 3.1,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "三文鱼": {
+  "kcal_per_100g": 139,
+  "protein_g": 17.2,
+  "fat_g": 7.8,
+  "carb_g": 0.0,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鲈鱼": {
+  "kcal_per_100g": 105,
+  "protein_g": 18.6,
+  "fat_g": 3.4,
+  "carb_g": 0.0,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鲫鱼": {
+  "kcal_per_100g": 108,
+  "protein_g": 17.1,
+  "fat_g": 2.7,
+  "carb_g": 3.8,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "黄花鱼": {
+  "kcal_per_100g": 97,
+  "protein_g": 17.7,
+  "fat_g": 2.5,
+  "carb_g": 0.8,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鱿鱼": {
+  "kcal_per_100g": 84,
+  "protein_g": 17.4,
+  "fat_g": 1.6,
+  "carb_g": 0.0,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "蛤蜊": {
+  "kcal_per_100g": 62,
+  "protein_g": 10.1,
+  "fat_g": 1.1,
+  "carb_g": 2.8,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "牡蛎": {
+  "kcal_per_100g": 73,
+  "protein_g": 5.3,
+  "fat_g": 2.1,
+  "carb_g": 8.2,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "基围虾": {
+  "kcal_per_100g": 101,
+  "protein_g": 18.2,
+  "fat_g": 1.4,
+  "carb_g": 3.9,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "螃蟹": {
+  "kcal_per_100g": 103,
+  "protein_g": 17.5,
+  "fat_g": 2.6,
+  "carb_g": 2.3,
+  "default_g": 200,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "腊肉": {
+  "kcal_per_100g": 498,
+  "protein_g": 11.8,
+  "fat_g": 48.8,
+  "carb_g": 2.9,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "腊肠": {
+  "kcal_per_100g": 508,
+  "protein_g": 22.0,
+  "fat_g": 40.7,
+  "carb_g": 15.3,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "午餐肉": {
+  "kcal_per_100g": 229,
+  "protein_g": 9.4,
+  "fat_g": 15.9,
+  "carb_g": 12.7,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "豆腐干": {
+  "kcal_per_100g": 140,
+  "protein_g": 16.2,
+  "fat_g": 3.6,
+  "carb_g": 11.5,
+  "default_g": 80,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "腐竹": {
+  "kcal_per_100g": 461,
+  "protein_g": 44.6,
+  "fat_g": 21.7,
+  "carb_g": 22.3,
+  "default_g": 20,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "内酯豆腐": {
+  "kcal_per_100g": 50,
+  "protein_g": 5.0,
+  "fat_g": 1.9,
+  "carb_g": 3.3,
+  "default_g": 200,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "千张": {
+  "kcal_per_100g": 262,
+  "protein_g": 24.5,
+  "fat_g": 16.0,
+  "carb_g": 5.9,
+  "default_g": 80,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "豆浆": {
+  "kcal_per_100g": 31,
+  "protein_g": 3.0,
+  "fat_g": 1.6,
+  "carb_g": 1.2,
+  "default_g": 250,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "酸奶": {
+  "kcal_per_100g": 72,
+  "protein_g": 2.5,
+  "fat_g": 2.7,
+  "carb_g": 9.3,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "奶酪": {
+  "kcal_per_100g": 328,
+  "protein_g": 25.7,
+  "fat_g": 23.5,
+  "carb_g": 3.5,
+  "default_g": 20,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "黄油": {
+  "kcal_per_100g": 888,
+  "protein_g": 1.4,
+  "fat_g": 98.0,
+  "carb_g": 0.0,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鹌鹑蛋": {
+  "kcal_per_100g": 160,
+  "protein_g": 12.8,
+  "fat_g": 11.1,
+  "carb_g": 2.1,
+  "default_g": 60,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "咸鸭蛋": {
+  "kcal_per_100g": 190,
+  "protein_g": 12.7,
+  "fat_g": 12.7,
+  "carb_g": 6.3,
+  "default_g": 60,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "皮蛋": {
+  "kcal_per_100g": 171,
+  "protein_g": 14.2,
+  "fat_g": 10.7,
+  "carb_g": 4.5,
+  "default_g": 60,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "糯米": {
+  "kcal_per_100g": 350,
+  "protein_g": 7.3,
+  "fat_g": 1.0,
+  "carb_g": 78.3,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "小米": {
+  "kcal_per_100g": 361,
+  "protein_g": 9.0,
+  "fat_g": 3.1,
+  "carb_g": 75.1,
+  "default_g": 60,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "燕麦片": {
+  "kcal_per_100g": 367,
+  "protein_g": 15.0,
+  "fat_g": 6.7,
+  "carb_g": 66.9,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "红薯": {
+  "kcal_per_100g": 99,
+  "protein_g": 1.1,
+  "fat_g": 0.2,
+  "carb_g": 24.7,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "紫薯": {
+  "kcal_per_100g": 82,
+  "protein_g": 1.2,
+  "fat_g": 0.2,
+  "carb_g": 18.9,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "南瓜": {
+  "kcal_per_100g": 23,
+  "protein_g": 0.7,
+  "fat_g": 0.1,
+  "carb_g": 5.3,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "芋头": {
+  "kcal_per_100g": 81,
+  "protein_g": 2.2,
+  "fat_g": 0.2,
+  "carb_g": 18.1,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "年糕": {
+  "kcal_per_100g": 154,
+  "protein_g": 3.3,
+  "fat_g": 0.6,
+  "carb_g": 34.7,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "饺子皮": {
+  "kcal_per_100g": 260,
+  "protein_g": 8.5,
+  "fat_g": 1.4,
+  "carb_g": 53.8,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "面包": {
+  "kcal_per_100g": 313,
+  "protein_g": 8.3,
+  "fat_g": 5.1,
+  "carb_g": 58.6,
+  "default_g": 80,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "吐司": {
+  "kcal_per_100g": 278,
+  "protein_g": 8.5,
+  "fat_g": 3.5,
+  "carb_g": 52.0,
+  "default_g": 70,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "意大利面": {
+  "kcal_per_100g": 351,
+  "protein_g": 12.5,
+  "fat_g": 1.5,
+  "carb_g": 72.0,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "绿豆": {
+  "kcal_per_100g": 329,
+  "protein_g": 21.6,
+  "fat_g": 0.8,
+  "carb_g": 62.0,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "红豆": {
+  "kcal_per_100g": 324,
+  "protein_g": 20.2,
+  "fat_g": 0.6,
+  "carb_g": 63.4,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "薏米": {
+  "kcal_per_100g": 361,
+  "protein_g": 12.8,
+  "fat_g": 3.3,
+  "carb_g": 71.1,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "香蕉": {
+  "kcal_per_100g": 93,
+  "protein_g": 1.4,
+  "fat_g": 0.2,
+  "carb_g": 22.0,
+  "default_g": 120,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "橙子": {
+  "kcal_per_100g": 48,
+  "protein_g": 0.8,
+  "fat_g": 0.2,
+  "carb_g": 11.1,
+  "default_g": 180,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "西瓜": {
+  "kcal_per_100g": 26,
+  "protein_g": 0.6,
+  "fat_g": 0.1,
+  "carb_g": 5.8,
+  "default_g": 300,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "葡萄": {
+  "kcal_per_100g": 44,
+  "protein_g": 0.5,
+  "fat_g": 0.2,
+  "carb_g": 10.3,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "草莓": {
+  "kcal_per_100g": 32,
+  "protein_g": 1.0,
+  "fat_g": 0.2,
+  "carb_g": 7.1,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "桃子": {
+  "kcal_per_100g": 48,
+  "protein_g": 0.9,
+  "fat_g": 0.1,
+  "carb_g": 12.2,
+  "default_g": 200,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "猕猴桃": {
+  "kcal_per_100g": 61,
+  "protein_g": 0.8,
+  "fat_g": 0.6,
+  "carb_g": 14.5,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "芒果": {
+  "kcal_per_100g": 35,
+  "protein_g": 0.6,
+  "fat_g": 0.2,
+  "carb_g": 8.3,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "菠萝": {
+  "kcal_per_100g": 41,
+  "protein_g": 0.5,
+  "fat_g": 0.1,
+  "carb_g": 10.8,
+  "default_g": 150,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "柚子": {
+  "kcal_per_100g": 42,
+  "protein_g": 0.8,
+  "fat_g": 0.2,
+  "carb_g": 9.5,
+  "default_g": 200,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "柠檬": {
+  "kcal_per_100g": 37,
+  "protein_g": 1.1,
+  "fat_g": 1.2,
+  "carb_g": 6.2,
+  "default_g": 30,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "豆瓣酱": {
+  "kcal_per_100g": 181,
+  "protein_g": 13.6,
+  "fat_g": 6.8,
+  "carb_g": 17.1,
+  "default_g": 15,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "甜面酱": {
+  "kcal_per_100g": 139,
+  "protein_g": 5.5,
+  "fat_g": 0.6,
+  "carb_g": 28.5,
+  "default_g": 15,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "黄豆酱": {
+  "kcal_per_100g": 131,
+  "protein_g": 12.1,
+  "fat_g": 3.4,
+  "carb_g": 14.6,
+  "default_g": 15,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "腐乳": {
+  "kcal_per_100g": 135,
+  "protein_g": 10.9,
+  "fat_g": 8.2,
+  "carb_g": 4.8,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "芝麻酱": {
+  "kcal_per_100g": 630,
+  "protein_g": 19.2,
+  "fat_g": 52.9,
+  "carb_g": 22.7,
+  "default_g": 15,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "花生酱": {
+  "kcal_per_100g": 600,
+  "protein_g": 6.9,
+  "fat_g": 53.0,
+  "carb_g": 25.3,
+  "default_g": 15,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "番茄酱": {
+  "kcal_per_100g": 85,
+  "protein_g": 4.9,
+  "fat_g": 0.2,
+  "carb_g": 16.9,
+  "default_g": 20,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "辣椒油": {
+  "kcal_per_100g": 897,
+  "protein_g": 0.1,
+  "fat_g": 99.2,
+  "carb_g": 0.5,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "香油": {
+  "kcal_per_100g": 898,
+  "protein_g": 0.0,
+  "fat_g": 99.7,
+  "carb_g": 0.2,
+  "default_g": 5,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "花椒": {
+  "kcal_per_100g": 258,
+  "protein_g": 6.7,
+  "fat_g": 8.9,
+  "carb_g": 37.8,
+  "default_g": 2,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "干辣椒": {
+  "kcal_per_100g": 324,
+  "protein_g": 10.6,
+  "fat_g": 5.8,
+  "carb_g": 69.9,
+  "default_g": 5,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "味精": {
+  "kcal_per_100g": 268,
+  "protein_g": 40.1,
+  "fat_g": 0.2,
+  "carb_g": 26.5,
+  "default_g": 2,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "鸡精": {
+  "kcal_per_100g": 195,
+  "protein_g": 10.0,
+  "fat_g": 0.5,
+  "carb_g": 38.0,
+  "default_g": 3,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "豆豉": {
+  "kcal_per_100g": 244,
+  "protein_g": 23.6,
+  "fat_g": 7.9,
+  "carb_g": 18.0,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "榨菜": {
+  "kcal_per_100g": 29,
+  "protein_g": 2.2,
+  "fat_g": 0.3,
+  "carb_g": 6.5,
+  "default_g": 30,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "酸菜": {
+  "kcal_per_100g": 14,
+  "protein_g": 1.1,
+  "fat_g": 0.2,
+  "carb_g": 2.6,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "枸杞": {
+  "kcal_per_100g": 258,
+  "protein_g": 13.9,
+  "fat_g": 1.5,
+  "carb_g": 64.1,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "红枣": {
+  "kcal_per_100g": 276,
+  "protein_g": 3.2,
+  "fat_g": 0.5,
+  "carb_g": 67.8,
+  "default_g": 20,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "干木耳": {
+  "kcal_per_100g": 265,
+  "protein_g": 12.1,
+  "fat_g": 1.5,
+  "carb_g": 65.6,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "银耳": {
+  "kcal_per_100g": 261,
+  "protein_g": 10.0,
+  "fat_g": 1.4,
+  "carb_g": 67.3,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "紫菜": {
+  "kcal_per_100g": 250,
+  "protein_g": 26.7,
+  "fat_g": 1.1,
+  "carb_g": 44.1,
+  "default_g": 5,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "海带": {
+  "kcal_per_100g": 13,
+  "protein_g": 1.2,
+  "fat_g": 0.1,
+  "carb_g": 2.1,
+  "default_g": 100,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "虾皮": {
+  "kcal_per_100g": 153,
+  "protein_g": 30.7,
+  "fat_g": 2.2,
+  "carb_g": 2.5,
+  "default_g": 5,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "粉丝": {
+  "kcal_per_100g": 338,
+  "protein_g": 0.8,
+  "fat_g": 0.2,
+  "carb_g": 83.7,
+  "default_g": 50,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "粉条": {
+  "kcal_per_100g": 337,
+  "protein_g": 0.5,
+  "fat_g": 0.1,
+  "carb_g": 84.2,
+  "default_g": 60,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "干香菇": {
+  "kcal_per_100g": 274,
+  "protein_g": 20.0,
+  "fat_g": 1.2,
+  "carb_g": 61.7,
+  "default_g": 10,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "花生米": {
+  "kcal_per_100g": 574,
+  "protein_g": 24.8,
+  "fat_g": 44.3,
+  "carb_g": 21.7,
+  "default_g": 30,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "核桃": {
+  "kcal_per_100g": 646,
+  "protein_g": 14.9,
+  "fat_g": 58.8,
+  "carb_g": 19.1,
+  "default_g": 20,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "清水": {
+  "kcal_per_100g": 0,
+  "protein_g": 0,
+  "fat_g": 0,
+  "carb_g": 0,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "热水": {
+  "kcal_per_100g": 0,
+  "protein_g": 0,
+  "fat_g": 0,
+  "carb_g": 0,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "开水": {
+  "kcal_per_100g": 0,
+  "protein_g": 0,
+  "fat_g": 0,
+  "carb_g": 0,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "凉水": {
+  "kcal_per_100g": 0,
+  "protein_g": 0,
+  "fat_g": 0,
+  "carb_g": 0,
+  "source": "《中国食物成分表(第6版)》常见参考值"
+ },
+ "高汤": {
+  "kcal_per_100g": 10,
+  "protein_g": 1.2,
+  "fat_g": 0.3,
+  "carb_g": 0.6,
+  "source": "《中国食物成分表(第6版)》常见参考值",
+  "default_g": 200
+ },
+ "水淀粉": {
+  "kcal_per_100g": 115,
+  "protein_g": 0.5,
+  "fat_g": 0,
+  "carb_g": 28,
+  "source": "《中国食物成分表(第6版)》常见参考值",
+  "default_g": 15
+ },
+ "蒜苗": {
+  "kcal_per_100g": 37,
+  "protein_g": 2.1,
+  "fat_g": 0.4,
+  "carb_g": 8.0,
+  "source": "《中国食物成分表(第6版)》常见参考值",
+  "default_g": 50
+ },
+ "蒜薹": {
+  "kcal_per_100g": 61,
+  "protein_g": 2.0,
+  "fat_g": 0.1,
+  "carb_g": 15.4,
+  "source": "《中国食物成分表(第6版)》常见参考值",
+  "default_g": 100
  }
 }

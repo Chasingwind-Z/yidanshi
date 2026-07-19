@@ -74,7 +74,9 @@ def recipes():
     out = []
     for r in storage.list_recipes():
         s = stats.get(r["id"], {})
-        out.append({**r, "times": s.get("times", 0), "rating": s.get("rating")})
+        whole, src = nutrition.effective(r)
+        out.append({**r, "times": s.get("times", 0), "rating": s.get("rating"),
+                    "kcal_effective": nutrition.per_serving_kcal(r), "kcal_whole": whole, "kcal_source": src})
     return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
 
 
@@ -87,8 +89,10 @@ def recipe(rid: str):
     # 朱批：这道菜历次记录的备注，红批注上教程卡
     notes = [{"date": m["date"], "note": m["note"]}
              for m in storage.list_meals() if m["recipe_id"] == rid and m.get("note")]
+    whole, src = nutrition.effective(r)
     return {**r, "times": s.get("times", 0), "rating": s.get("rating"),
             "nutrition": nutrition.compute(r["ingredients"]),
+            "kcal_effective": nutrition.per_serving_kcal(r), "kcal_whole": whole, "kcal_source": src,
             "annotations": sorted(notes, key=lambda n: n["date"], reverse=True)[:5]}
 
 
@@ -169,6 +173,12 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
 ING_DB_DIR = storage.DATA / "ingredients"
 
 
+@app.post("/api/nutrition/preview")
+def nutrition_preview(body: dict):
+    """编辑器实时合计：传 ingredients 列表，返回 compute 结果（本地纯计算，零成本）。"""
+    return nutrition.compute(body.get("ingredients", [])) or {}
+
+
 @app.get("/api/ingredient-names")
 def ingredient_names():
     """可选食材名列表（内置库 + 用户缓存），给编辑器 datalist 用。"""
@@ -186,8 +196,9 @@ def ingredient_info(name: str):
     hit = nutrition.lookup(name)
     cached = nutrition.cached(name)
     if hit:
-        # 内置库管数值和来源；功效/贴士文案若有 AI 缓存则合并进来
-        return {**hit, "benefits": (cached or {}).get("benefits", []), "tips": (cached or {}).get("tips", [])}
+        # 内置库管数值和来源；功效/贴士文案若有 AI 缓存则合并进来（来源分开标注）
+        return {**hit, "benefits": (cached or {}).get("benefits", []), "tips": (cached or {}).get("tips", []),
+                "text_source": "AI 生成" if cached else ""}
     if cached:
         return cached
     try:
@@ -321,7 +332,7 @@ def add_meal(body: dict):
 @app.get("/api/meals")
 def meals():
     rs = {r["id"]: r for r in storage.list_recipes()}
-    kcals = {rid: nutrition.effective_kcal(r) for rid, r in rs.items()}
+    kcals = {rid: nutrition.per_serving_kcal(r) for rid, r in rs.items()}
     out = [{**m,
             "recipe_name": rs.get(m["recipe_id"], {}).get("name") or m.get("recipe_name") or m["recipe_id"],
             "kcal": kcals.get(m["recipe_id"])} for m in storage.list_meals()]
@@ -371,8 +382,9 @@ def guest_link(reset: bool = False):
 def guest_menu(t: str):
     _check_guest(t)
     stats = storage.recipe_stats()
-    out = [{k: r.get(k) for k in ("id", "name", "category", "cover", "kcal", "minutes")}
-           | {"times": stats.get(r["id"], {}).get("times", 0), "rating": stats.get(r["id"], {}).get("rating")}
+    out = [{k: r.get(k) for k in ("id", "name", "category", "cover", "minutes")}
+           | {"times": stats.get(r["id"], {}).get("times", 0), "rating": stats.get(r["id"], {}).get("rating"),
+              "kcal": nutrition.per_serving_kcal(r)}
            for r in storage.list_recipes()]
     return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
 
@@ -445,7 +457,7 @@ def weekreport():
         if not r:
             continue
         cats[r["category"]] += 1
-        kcal += nutrition.effective_kcal(r) or 0
+        kcal += nutrition.per_serving_kcal(r) or 0
         ings = [i["name"] for i in r["ingredients"]]
         if any(PROT.search(n) for n in ings):
             protein_meals += 1
@@ -459,7 +471,8 @@ def weekreport():
         tip = "蛋白质可以再安排上一点（蛋豆鱼肉都算）。"
     else:
         tip = "吃得挺均衡，保持这个节奏。"
-    return {"meals": len(meals), "kcal": kcal, "protein_meals": protein_meals,
+    return {"meals": len(meals), "kcal": kcal, "kcal_avg": round(kcal / len(meals)) if meals and kcal else None,
+            "protein_meals": protein_meals,
             "veg_kinds": sorted(veg_kinds), "categories": dict(cats), "tip": tip}
 
 

@@ -58,12 +58,14 @@ def compute(ingredients: list[dict]) -> dict | None:
     """按食材克重合计营养。只统计「有克重且查得到数据」的食材，报告覆盖度和每项折算热量。"""
     total = {"kcal": 0.0, "protein_g": 0.0, "fat_g": 0.0, "carb_g": 0.0}
     per_item: list[int | None] = []
+    missing: list[str] = []
     covered = 0
     for ing in ingredients:
         g = ing.get("grams")
         info = (lookup(ing["name"]) or cached(ing["name"])) if g else None
         if not g or not info or info.get("kcal_per_100g") is None:
             per_item.append(None)
+            missing.append(ing["name"])
             continue
         covered += 1
         f = g / 100.0
@@ -77,12 +79,30 @@ def compute(ingredients: list[dict]) -> dict | None:
         return None
     return {"kcal": round(total["kcal"]), "protein_g": round(total["protein_g"], 1),
             "fat_g": round(total["fat_g"], 1), "carb_g": round(total["carb_g"], 1),
-            "covered": covered, "total": len(ingredients), "per_item": per_item}
+            "covered": covered, "total": len(ingredients), "per_item": per_item, "missing": missing}
 
 
-def effective_kcal(recipe: dict) -> int | None:
-    """一道菜的最终热量口径：克重实算优先，缺数据回退 AI 估算。"""
-    c = compute(recipe.get("ingredients", []))
-    if c and c["covered"] >= max(1, c["total"] // 2):  # 覆盖过半才信实算
-        return c["kcal"]
-    return recipe.get("kcal")
+def effective(recipe: dict) -> tuple[int | None, str]:
+    """一道菜的唯一热量口径（整锅）：主料可算则信实算，否则回退 AI 估算。
+    判据：克重最大的食材必须查得到数据——主料错则全错，调料缺无所谓。"""
+    ings = recipe.get("ingredients", [])
+    c = compute(ings)
+    weighed = [i for i in ings if i.get("grams")]
+    if c and weighed:
+        main = max(weighed, key=lambda i: i["grams"])
+        info = lookup(main["name"]) or cached(main["name"])
+        if info and info.get("kcal_per_100g") is not None:
+            return c["kcal"], "实算"
+    return recipe.get("kcal"), ("AI估算" if recipe.get("kcal") is not None else "")
+
+
+def per_serving_kcal(recipe: dict) -> int | None:
+    """每餐口径：整锅热量 ÷ 这一锅够吃几餐。食历/周报/点菜用这个数。"""
+    whole, _ = effective(recipe)
+    if whole is None:
+        return None
+    return round(whole / max(1, recipe.get("servings") or 1))
+
+
+def effective_kcal(recipe: dict) -> int | None:  # 兼容旧调用
+    return effective(recipe)[0]
