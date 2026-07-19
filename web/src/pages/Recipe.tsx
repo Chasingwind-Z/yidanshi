@@ -164,7 +164,10 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
     setErr("");
     setAiBusy(true);
     try {
-      const x = await api.aiExtract(aiText, source);
+      // 粘的是分享链接（抖音口令等）→ 服务端抓文案；纯文字 → 直接整理
+      const link = aiText.match(/https?:\/\/\S+/)?.[0];
+      const isLinkMode = !!link && aiText.replace(/https?:\/\/\S+/, "").trim().length < 80;
+      const x = await api.aiExtract(isLinkMode ? "" : aiText, source, isLinkMode ? link : undefined);
       if (x.name) setName(x.name);
       if (x.category) setCategory(x.category);
       setIngs(x.ingredients.map(i => i.amount ? `${i.name} | ${i.amount}` : i.name).join("\n"));
@@ -210,9 +213,9 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
 
       {ai?.available && (
         <div className="aibox">
-          <div className="t">把教程原文粘进来（抖音/小红书文案、随手记的做法都行），AI 帮你整理成菜谱</div>
+          <div className="t">粘教程文案、抖音分享链接（口令直接粘），或随口描述做法——AI 帮你整理成菜谱</div>
           <textarea value={aiText} onChange={e => setAiText(e.target.value)}
-            placeholder="例：先把牛排切条腌10分钟，芦笋焯水40秒…（长按抖音文案可复制）" />
+            placeholder={"例：先把牛排切条腌10分钟，芦笋焯水40秒…\n或直接粘：7.88 复制打开抖音 https://v.douyin.com/xxxx/"} />
           <div style={{ marginTop: 8 }}>
             <button className="btn ghost" disabled={aiBusy || !aiText.trim()} onClick={aiFill}>
               {aiBusy ? "AI 整理中，可能要十几秒…" : `AI 整理（${ai.backend}）`}

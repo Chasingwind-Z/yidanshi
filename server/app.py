@@ -203,10 +203,18 @@ def ai_illustrate(body: dict):
 
 @app.post("/api/ai/extract")
 def ai_extract(body: dict):
-    if not body.get("text", "").strip():
+    """text=教程原文；或 url=分享链接（抖音等，服务端尽力抓文案再整理）。"""
+    text, source = body.get("text", "").strip(), body.get("source", "")
+    if body.get("url"):
+        source = body["url"]
+        fetched = llm.fetch_link_text(body["url"])
+        if len(fetched) < 15:
+            raise HTTPException(422, "这个链接抓不到文案（平台反爬）——去 App 里长按复制它的文案粘过来吧")
+        text = (fetched + "\n" + text).strip()
+    if not text:
         raise HTTPException(400, "教程原文不能为空")
     try:
-        return llm.extract_recipe(body["text"], body.get("source", ""))
+        return llm.extract_recipe(text, source)
     except Exception as e:  # CLI 超时 / API 配置错 / JSON 解析失败等，前端直接展示
         raise HTTPException(502, str(e))
 

@@ -19,9 +19,9 @@ SUBJECT_RATIO = 0.78         # 主体占卡片宽度比例
 ASSETS = Path(__file__).parent / "assets"
 # 餐具库：摄影质感素材（同一棚拍光线家族）→ (文件, 食物占卡片宽度比例)
 TABLEWARE = {
-    "plate": ("plate-photo.png", 0.56),    # 平盘：小炒/默认
-    "bowl": ("bowl-photo.png", 0.42),      # 深碗：饭粥/面点/羹汤
-    "saucer": ("saucer-photo.png", 0.40),  # 浅盘：甜点
+    "plate": ("plate-photo.png", 0.58),    # 平盘：小炒/默认
+    "bowl": ("bowl-photo.png", 0.54),      # 深碗：饭粥/面点/羹汤
+    "saucer": ("saucer-photo.png", 0.46),  # 浅盘：甜点
 }
 CATEGORY_TABLEWARE = {"饭粥": "bowl", "面点": "bowl", "羹汤": "bowl", "甜点": "saucer"}
 

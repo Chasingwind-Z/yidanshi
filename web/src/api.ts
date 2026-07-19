@@ -85,10 +85,10 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recipe_id, kind, index }),
     })),
-  aiExtract: (text: string, source: string) =>
+  aiExtract: (text: string, source: string, url?: string) =>
     j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; source: string }>(
       fetch("/api/ai/extract", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, source }),
+        body: JSON.stringify({ text, source, url }),
       })),
 };

@@ -42,7 +42,7 @@ export default function App() {
   const tab = route.startsWith("/recipe/") ? "/" : route;
   return (
     <div className="app">
-      <div className="page">{page}</div>
+      <div className="page" key={route}>{page}</div>
       <nav className="tabbar">
         {[["/", "食单"], ["/record", "记一餐"], ["/shopping", "买菜"], ["/timeline", "食历"]].map(([to, label]) => (
           <a key={to} href={`#${to}`} className={tab === to ? "on" : ""}>{label}</a>

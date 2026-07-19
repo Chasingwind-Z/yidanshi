@@ -99,3 +99,10 @@
 - [x] 点菜链接：设置页生成/复制/重置带 token 的只读食单页（#/guest/<token>，无导航无编辑），亲友勾菜「传旨」下单（称呼+留言）；点单出现在食单页顶部收件箱（菜名可跳菜谱，做完了一键归档）；错 token 403
 - [x] 买菜清单：新「买菜」tab，勾选本周想做的菜 → 食材自动合并（同名合并用量、标来源菜），调料自动分区「家里可能已有」；勾选已买、清空/重选；data/shopping.json 跨设备同步
 - [ ] 外网点菜：Cloudflare Tunnel / Tailscale Funnel 接入指南（**待 zzf 有真实外网需求时**）
+
+## R9 成熟度打磨 ✅（2026-07-18）
+
+- [x] 链接导入：/api/ai/extract 支持 url（抖音分享页扒文案实测成功 + og 标签通用兜底），AI 框直接粘抖音口令即可；非做菜内容不瞎编、反爬失败引导粘文案
+- [x] 碗内食物占比修复（0.42→0.54，炒饭不再显小），平盘/浅盘同步微调
+- [x] 苹果味打磨（emilkowalski/skills 的 apple-design 落地）：全站按压即时反馈（pointer-down scale .97）、页面 180ms 渐入过渡、辅助文字对比度提到 ≥4.5:1、触控目标统一 ≥44pt、focus-visible 键盘焦点、tabbar 毛玻璃 blur20+saturate160、prefers-reduced-motion 全覆盖、去 iOS 点按高亮
+- [x] skill 安装：apple-design（Emil WWDC 秘籍）+ apple-hig-review（HIG 审查）+ improve-animations 入中央库，双 agent 可用
