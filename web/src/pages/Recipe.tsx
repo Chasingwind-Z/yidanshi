@@ -157,6 +157,7 @@ export default function RecipePage({ id }: { id: string }) {
                   </div>
                   <div className="n">{ing.name}</div>
                   {ing.amount && <div className="a">{ing.amount}</div>}
+                  {r.nutrition?.per_item?.[i] != null && <div className="a" style={{ color: "var(--accent)" }}>≈{r.nutrition.per_item[i]}kcal</div>}
                 </button>
               ))}
               <div className="dimtext" style={{ textAlign: "center", marginTop: 4 }}>点食材看小百科</div>

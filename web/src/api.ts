@@ -2,7 +2,7 @@ export interface Ingredient { name: string; amount: string; grams?: number | nul
 export interface Recipe {
   id: string; name: string; category: string; cover: string; source: string; created: string;
   kcal?: number | null; minutes?: number | null; difficulty?: string | null; relaxed?: boolean;
-  nutrition?: { kcal: number; protein_g: number; fat_g: number; carb_g: number; covered: number; total: number } | null;
+  nutrition?: { kcal: number; protein_g: number; fat_g: number; carb_g: number; covered: number; total: number; per_item?: (number | null)[] } | null;
   ingredients: Ingredient[]; steps: string[]; tips: string[];
   times: number; rating: number | null;
   illust?: { ingredients: string[]; steps: string[] };

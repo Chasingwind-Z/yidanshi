@@ -321,9 +321,10 @@ def add_meal(body: dict):
 @app.get("/api/meals")
 def meals():
     rs = {r["id"]: r for r in storage.list_recipes()}
+    kcals = {rid: nutrition.effective_kcal(r) for rid, r in rs.items()}
     out = [{**m,
             "recipe_name": rs.get(m["recipe_id"], {}).get("name") or m.get("recipe_name") or m["recipe_id"],
-            "kcal": rs.get(m["recipe_id"], {}).get("kcal")} for m in storage.list_meals()]
+            "kcal": kcals.get(m["recipe_id"])} for m in storage.list_meals()]
     return sorted(out, key=lambda m: (m["date"], m["id"]), reverse=True)
 
 
@@ -444,7 +445,7 @@ def weekreport():
         if not r:
             continue
         cats[r["category"]] += 1
-        kcal += r.get("kcal") or 0
+        kcal += nutrition.effective_kcal(r) or 0
         ings = [i["name"] for i in r["ingredients"]]
         if any(PROT.search(n) for n in ings):
             protein_meals += 1
