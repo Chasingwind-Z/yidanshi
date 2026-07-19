@@ -341,16 +341,17 @@ input[type="range"] { margin-top: 12px; accent-color: var(--accent); padding: 0;
 .ingsheet-head .icon img { width: 100%; height: 100%; object-fit: cover; }
 .ingsheet-head b { font-family: var(--serif); font-size: 19px; }
 .ingsheet-head .more { margin-left: auto; }
-.ingsheet-numcap { font-size: 12px; color: var(--dim); margin-top: 10px; }
-.ingsheet-numcap b { font-family: var(--mono); color: var(--accent); }
-.ingsheet-nums { display: flex; gap: 8px; margin: 10px 0; }
-.ingsheet-numcap + .ingsheet-nums { margin-top: 6px; }
-.ingsheet-nums i { display: block; font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--dim); opacity: 0.8; margin-top: 2px; }
-.ingsheet-nums > div {
-  flex: 1; text-align: center; background: var(--card2); border-radius: 10px; padding: 8px 4px;
+.ingtable {
+  display: grid; grid-template-columns: auto repeat(4, 1fr);
+  align-items: center; row-gap: 8px; column-gap: 4px;
+  margin: 12px 0 6px; background: var(--card2); border-radius: 12px;
+  padding: 12px 12px; text-align: center;
 }
-.ingsheet-nums b { display: block; font-family: var(--mono); font-size: 16px; color: var(--accent); }
-.ingsheet-nums span { font-size: 11px; color: var(--dim); }
+.ingtable .ih { font-size: 11px; color: var(--dim); }
+.ingtable .il { font-size: 12px; color: var(--dim); text-align: left; white-space: nowrap; padding-right: 6px; }
+.ingtable .iv { font-family: var(--mono); font-size: 14px; }
+.ingtable .ac { color: var(--accent); font-weight: 600; }
+.ingsheet-note { font-size: 12px; color: var(--dim); margin: 0 0 8px; }
 .ingsheet-line { font-size: 14px; line-height: 1.8; }
 
 /* 空状态 / 加载态 */
