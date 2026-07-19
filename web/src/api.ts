@@ -71,6 +71,11 @@ export const api = {
     return j<{ results: { mode: string; photo_id: string; card: string }[] }>(
       fetch("/api/cutout", { method: "POST", body: fd }));
   },
+  replate: (photo_id: string, tableware: string) =>
+    j<{ card: string; tableware: string }>(fetch("/api/replate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photo_id, tableware }),
+    })),
   aiStatus: () => j<{
     backend: string; model: string; available: boolean;
     imagegen?: { backend: string; model: string; available: boolean };

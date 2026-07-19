@@ -16,8 +16,18 @@ MODEL = os.environ.get("YIDANSHI_MODEL", "isnet-general-use")
 CARD_SIZE = 1024
 CARD_BG = (244, 239, 227, 255)  # 暖米白宣纸底（与前端 --bg 一致），盘子落在纸上
 SUBJECT_RATIO = 0.78         # 主体占卡片宽度比例
-PLATE_ASSET = Path(__file__).parent / "assets" / "plate-photo.png"  # 摄影质感白瓷盘（与照片食物同媒介，避免插画/照片混搭违和）
-PLATE_FOOD_RATIO = 0.56      # 摆盘模式下食物占卡片宽度比例（落在盘心内）
+ASSETS = Path(__file__).parent / "assets"
+# 餐具库：摄影质感素材（同一棚拍光线家族）→ (文件, 食物占卡片宽度比例)
+TABLEWARE = {
+    "plate": ("plate-photo.png", 0.56),    # 平盘：小炒/默认
+    "bowl": ("bowl-photo.png", 0.42),      # 深碗：饭粥/面点/羹汤
+    "saucer": ("saucer-photo.png", 0.40),  # 浅盘：甜点
+}
+CATEGORY_TABLEWARE = {"饭粥": "bowl", "面点": "bowl", "羹汤": "bowl", "甜点": "saucer"}
+
+
+def match_tableware(category: str) -> str:
+    return CATEGORY_TABLEWARE.get(category, "plate")
 
 
 @lru_cache(maxsize=1)
@@ -58,10 +68,10 @@ def make_card(cut: Image.Image, size: int = CARD_SIZE) -> Image.Image:
     return card
 
 
-@lru_cache(maxsize=1)
-def _plate_base(size: int = CARD_SIZE) -> Image.Image:
-    """摄影盘素材融进纸底：径向羽化边缘，生成图与页面底色的细微色差不会露出方形接缝。"""
-    plate = Image.open(PLATE_ASSET).convert("RGBA").resize((size, size), Image.LANCZOS)
+@lru_cache(maxsize=8)
+def _plate_base(asset: str, size: int = CARD_SIZE) -> Image.Image:
+    """餐具素材融进纸底：径向羽化边缘，生成图与页面底色的细微色差不会露出方形接缝。"""
+    plate = Image.open(ASSETS / asset).convert("RGBA").resize((size, size), Image.LANCZOS)
     mask = Image.new("L", (size, size), 0)
     from PIL import ImageDraw
 
@@ -87,12 +97,13 @@ def _harmonize(food: Image.Image) -> Image.Image:
     return out
 
 
-def make_plate_card(cut: Image.Image, size: int = CARD_SIZE) -> Image.Image:
-    """抠出的食物摆到摄影质感瓷盘上：同为照片媒介，观感统一。"""
-    card = _plate_base(size).copy()
+def make_plate_card(cut: Image.Image, tableware: str = "plate", size: int = CARD_SIZE) -> Image.Image:
+    """抠出的食物摆进摄影质感餐具：同为照片媒介，观感统一。tableware ∈ TABLEWARE。"""
+    asset, ratio = TABLEWARE.get(tableware, TABLEWARE["plate"])
+    card = _plate_base(asset, size).copy()
     cut = _harmonize(cut)
 
-    target = int(size * PLATE_FOOD_RATIO)
+    target = int(size * ratio)
     scale = min(target / cut.width, target / cut.height)
     subject = cut.resize((max(1, int(cut.width * scale)), max(1, int(cut.height * scale))), Image.LANCZOS)
     x, y = (size - subject.width) // 2, (size - subject.height) // 2

@@ -164,6 +164,20 @@ async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(Fals
     return {"results": out}
 
 
+@app.post("/api/replate")
+def replate(body: dict):
+    """换餐具：用已存的抠图重新合成菜卡（本地零成本）。tableware ∈ plate/bowl/saucer。"""
+    pid, tw = body.get("photo_id", ""), body.get("tableware", "plate")
+    cutf = storage.PHOTOS / "cut" / f"{pid}.png"
+    if not cutf.exists():
+        raise HTTPException(404, "没有这张抠图")
+    from PIL import Image
+
+    card = cutout.make_plate_card(Image.open(cutf).convert("RGBA"), tw)
+    (storage.PHOTOS / "cards" / f"{pid}.png").write_bytes(cutout._png(card))
+    return {"card": f"/photos/cards/{pid}.png", "tableware": tw}
+
+
 # ---------- AI 通道 ----------
 
 @app.get("/api/ai/status")

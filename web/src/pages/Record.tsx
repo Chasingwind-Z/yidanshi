@@ -95,6 +95,29 @@ export default function Record() {
   const [saving, setSaving] = useState(false);
   const [backfill, setBackfill] = useState<{ recipe: Recipe; items: { i: number; name: string; amount: string; value: string }[] } | null>(null);
 
+  // 餐具：choice=auto 时按菜的品类自动匹配（汤面粥→深碗、甜点→浅盘、其余→平盘），也可手动指定
+  const TW_MATCH: Record<string, string> = { 饭粥: "bowl", 面点: "bowl", 羹汤: "bowl", 甜点: "saucer" };
+  const TW_LABEL: Record<string, string> = { plate: "平盘", bowl: "深碗", saucer: "浅盘" };
+  const [tw, setTw] = useState<{ choice: string; current: string }>({ choice: "auto", current: "plate" });
+
+  async function applyTw(target: string, choice: string) {
+    if (!picked) return;
+    if (target === tw.current) { setTw({ choice, current: target }); return; }
+    try {
+      const r = await api.replate(picked.photo_id, target);
+      setPicked(p => p && { ...p, card: `${r.card}?t=${Date.now()}` });
+      setTw({ choice, current: target });
+    } catch { /* 换盘失败保持原样 */ }
+  }
+
+  useEffect(() => {
+    if (!picked || picked.mode !== "plate" || tw.choice !== "auto") return;
+    const cat = recipeId ? recipes.find(r => r.id === recipeId)?.category : newCat;
+    const target = TW_MATCH[cat ?? ""] ?? "plate";
+    if (target !== tw.current) applyTw(target, "auto");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipeId, newCat, picked?.photo_id, tw]);
+
   useEffect(() => {
     api.recipes().then(({ categories, recipes }) => {
       setRecipes(recipes);
@@ -227,7 +250,7 @@ export default function Record() {
     );
   }
 
-  const labels: Record<string, string> = { plate: "插画摆盘", auto: "AI 抠图", circle: "圆框直裁", polish: "AI 精修" };
+  const labels: Record<string, string> = { plate: "摆盘", auto: "AI 抠图", circle: "圆框直裁", polish: "AI 精修" };
 
   return (
     <>
@@ -238,6 +261,16 @@ export default function Record() {
       {picked ? (
         <>
           <div className="preview"><img src={picked.card} alt="菜卡" /></div>
+          {picked.mode === "plate" && (
+            <div className="chips" style={{ marginTop: 10 }}>
+              <button className={`chip pick ${tw.choice === "auto" ? "on" : ""}`}
+                onClick={() => setTw(t => ({ ...t, choice: "auto" }))}>自动配盘</button>
+              {Object.entries(TW_LABEL).map(([k, label]) => (
+                <button key={k} className={`chip pick ${tw.choice === k ? "on" : ""}`}
+                  onClick={() => applyTw(k, k)}>{label}</button>
+              ))}
+            </div>
+          )}
           <div className="row" style={{ marginTop: 10 }}>
             {options.length > 1 && (
               <button className="btn ghost" onClick={() => setPicked(null)}>看另一种效果</button>
