@@ -135,7 +135,7 @@ export default function Record() {
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
-  const [backfill, setBackfill] = useState<{ recipe: Recipe; items: { i: number; name: string; amount: string; value: string }[] } | null>(null);
+  const [backfill, setBackfill] = useState<{ recipe: Recipe; items: { i: number; name: string; amount: string; value: string }[]; askServings: boolean; servings: number | null } | null>(null);
 
   // 餐具：choice=auto 时按菜的品类自动匹配（汤面粥→深碗、甜点→浅盘、其余→平盘），也可手动指定
   const TW_MATCH: Record<string, string> = { 饭粥: "bowl", 面点: "bowl", 羹汤: "bowl", 甜点: "saucer" };
@@ -247,8 +247,9 @@ export default function Record() {
         const fuzzy = rec.ingredients
           .map((ing, i) => ({ i, ...ing, value: "" }))
           .filter(x => !x.amount || /适量|少许|随意|若干|一点/.test(x.amount));
-        if (fuzzy.length > 0) {
-          setBackfill({ recipe: rec, items: fuzzy });
+        const askServings = (rec.servings ?? 1) === 1 && (rec.kcal_whole ?? 0) > 1200;
+        if (fuzzy.length > 0 || askServings) {
+          setBackfill({ recipe: rec, items: fuzzy, askServings, servings: null });
           return;
         }
       } catch { /* 回填是锦上添花，失败不挡路 */ }
@@ -263,13 +264,20 @@ export default function Record() {
   async function saveBackfill() {
     if (!backfill) return;
     const filled = backfill.items.filter(x => x.value.trim());
+    const patch: Partial<Recipe> = { ...backfill.recipe };
+    let dirty = false;
     if (filled.length > 0) {
-      const ings = backfill.recipe.ingredients.map((ing, idx) => {
+      patch.ingredients = backfill.recipe.ingredients.map((ing, idx) => {
         const it = filled.find(x => x.i === idx);
         return it ? { ...ing, amount: it.value.trim() } : ing;
       });
-      await api.saveRecipe({ ...backfill.recipe, ingredients: ings });
+      dirty = true;
     }
+    if (backfill.servings && backfill.servings > 1) {
+      patch.servings = backfill.servings;
+      dirty = true;
+    }
+    if (dirty) await api.saveRecipe(patch);
     location.hash = "#/timeline";
   }
 
@@ -278,9 +286,22 @@ export default function Record() {
       <>
         <span className="seal">记</span>
         <h1>记好了！顺手补一笔？</h1>
-        <div className="hint" style={{ marginTop: 0 }}>
-          「{backfill.recipe.name}」有 {backfill.items.length} 个用量还是"大概"——这次实际放了多少？填了下次就能照做（不填也没关系）。
-        </div>
+        {backfill.items.length > 0 && (
+          <div className="hint" style={{ marginTop: 0 }}>
+            「{backfill.recipe.name}」有 {backfill.items.length} 个用量还是"大概"——这次实际放了多少？填了下次就能照做（不填也没关系）。
+          </div>
+        )}
+        {backfill.askServings && (
+          <>
+            <label className="f">这一锅够吃几餐？（整锅 ≈{backfill.recipe.kcal_whole} kcal，分几餐记账更准）</label>
+            <div className="chips">
+              {[1, 2, 3, 4].map(n => (
+                <button key={n} className={`chip pick ${backfill.servings === n ? "on" : ""}`}
+                  onClick={() => setBackfill(b => b && ({ ...b, servings: n }))}>{n} 餐</button>
+              ))}
+            </div>
+          </>
+        )}
         {backfill.items.map((it, k) => (
           <div key={it.i}>
             <label className="f">{it.name}（现在是：{it.amount || "没写"}）</label>
