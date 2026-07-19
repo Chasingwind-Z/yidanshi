@@ -8,11 +8,36 @@ export default function Shopping() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [items, setItems] = useState<ShopItem[] | null>(null);
   const [picking, setPicking] = useState(false);
+  const [pantry, setPantry] = useState<string[]>([]);
+  const [pantryInput, setPantryInput] = useState("");
 
   useEffect(() => {
     api.recipes().then(({ recipes }) => setRecipes(recipes));
     api.shopping().then(d => setItems(d.items));
+    api.pantry().then(d => setPantry(d.items)).catch(() => {});
   }, []);
+
+  function addPantry() {
+    const names = pantryInput.split(/[、,，\s]+/).map(x => x.trim()).filter(Boolean);
+    if (names.length === 0) return;
+    const next = [...new Set([...pantry, ...names])];
+    setPantry(next);
+    api.savePantry(next);
+    setPantryInput("");
+  }
+
+  function removePantry(name: string) {
+    const next = pantry.filter(x => x !== name);
+    setPantry(next);
+    api.savePantry(next);
+  }
+
+  function stockBought() {
+    const bought = items!.filter(x => x.checked).map(x => x.name);
+    const next = [...new Set([...pantry, ...bought])];
+    setPantry(next);
+    api.savePantry(next);
+  }
 
   if (items === null) return <div className="loading">加载中</div>;
 
@@ -63,6 +88,23 @@ export default function Shopping() {
       <span className="seal">采</span>
       <h1>买菜清单</h1>
 
+      <div className="pantrybox">
+        <div className="t">🧊 冰箱里有（翻牌子会优先推能用上的菜）</div>
+        <div className="chips">
+          {pantry.map(name => (
+            <button key={name} className="chip pick" title="点一下移除"
+              onClick={() => removePantry(name)}>{name} ✕</button>
+          ))}
+          {pantry.length === 0 && <span className="hint" style={{ marginTop: 0 }}>还没记，把冰箱里的食材加进来</span>}
+        </div>
+        <div className="row" style={{ marginTop: 8 }}>
+          <input placeholder="鸡蛋、番茄、五花肉（顿号或空格分隔）" value={pantryInput}
+            onChange={e => setPantryInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addPantry()} />
+          <button className="btn ghost" style={{ maxWidth: 90 }} onClick={addPantry}>加入</button>
+        </div>
+      </div>
+
       {picking ? (
         <>
           <div className="hint" style={{ marginTop: 0 }}>勾选这周想做的菜，食材自动合并成清单：</div>
@@ -110,6 +152,9 @@ export default function Shopping() {
           )}
           <div className="row" style={{ marginTop: 18 }}>
             <button className="btn ghost danger" onClick={clearAll}>清空</button>
+            {items.some(x => x.checked) && (
+              <button className="btn ghost" onClick={stockBought}>已买的入冰箱</button>
+            )}
             <button className="btn ghost" onClick={() => setPicking(true)}>重新选菜</button>
           </div>
         </>

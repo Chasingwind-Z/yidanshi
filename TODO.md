@@ -106,3 +106,10 @@
 - [x] 碗内食物占比修复（0.42→0.54，炒饭不再显小），平盘/浅盘同步微调
 - [x] 苹果味打磨（emilkowalski/skills 的 apple-design 落地）：全站按压即时反馈（pointer-down scale .97）、页面 180ms 渐入过渡、辅助文字对比度提到 ≥4.5:1、触控目标统一 ≥44pt、focus-visible 键盘焦点、tabbar 毛玻璃 blur20+saturate160、prefers-reduced-motion 全覆盖、去 iOS 点按高亮
 - [x] skill 安装：apple-design（Emil WWDC 秘籍）+ apple-hig-review（HIG 审查）+ improve-animations 入中央库，双 agent 可用
+
+## R11 收官四件套 ✅（2026-07-19）
+
+- [x] 食材库存：买菜页「冰箱里有」chips 管理（顿号批量加/点按移除/已买一键入库），翻牌子新增「优先用冰箱食材」（按食材重合度取最高分组随机）
+- [x] 自定义相机页：现场拍 → getUserMedia 实时圆环取景（把盘子放进环里，拍下即带框直接抠图）；不支持时（如 LAN http 非安全上下文）自动回退系统相机
+- [x] 难度字段：AI 整理自动估 简单/中等/硬菜，编辑器可改，详情页展示，翻牌子「只要简单省事的」条件
+- [x] 营养轻周报：食历周条点开小结——蛋白出现餐数/蔬菜种类/品类分布 + 温和一句话提示（规则版零成本，绝不审判）

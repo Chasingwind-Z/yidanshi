@@ -1,7 +1,7 @@
 export interface Ingredient { name: string; amount: string }
 export interface Recipe {
   id: string; name: string; category: string; cover: string; source: string; created: string;
-  kcal?: number | null; minutes?: number | null; relaxed?: boolean;
+  kcal?: number | null; minutes?: number | null; difficulty?: string | null; relaxed?: boolean;
   ingredients: Ingredient[]; steps: string[]; tips: string[];
   times: number; rating: number | null;
   illust?: { ingredients: string[]; steps: string[] };
@@ -32,13 +32,21 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(r),
     })),
-  random: (category?: string, opts?: { avoidDays?: number; maxMinutes?: number }) => {
+  random: (category?: string, opts?: { avoidDays?: number; maxMinutes?: number; difficulty?: string; usePantry?: boolean }) => {
     const q = new URLSearchParams();
     if (category) q.set("category", category);
     if (opts?.avoidDays) q.set("avoid_days", String(opts.avoidDays));
     if (opts?.maxMinutes) q.set("max_minutes", String(opts.maxMinutes));
+    if (opts?.difficulty) q.set("difficulty", opts.difficulty);
+    if (opts?.usePantry) q.set("use_pantry", "1");
     return j<Recipe>(fetch(`/api/random?${q}`));
   },
+  pantry: () => j<{ items: string[] }>(fetch("/api/pantry")),
+  savePantry: (items: string[]) => j<{ items: string[] }>(fetch("/api/pantry", {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
+  })),
+  weekreport: () => j<{ meals: number; kcal: number; protein_meals: number; veg_kinds: string[];
+    categories: Record<string, number>; tip: string }>(fetch("/api/weekreport")),
   meals: () => j<Meal[]>(fetch("/api/meals")),
   addMeal: (m: object) => j<Meal>(fetch("/api/meals", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(m),

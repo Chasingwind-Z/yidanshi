@@ -106,9 +106,35 @@ def update_recipe(rid: str, body: dict):
     return storage.save_recipe(body)
 
 
+PANTRY_FILE = storage.DATA / "pantry.json"
+
+
+def _pantry() -> list[str]:
+    return json.loads(PANTRY_FILE.read_text(encoding="utf-8")).get("items", []) if PANTRY_FILE.exists() else []
+
+
+@app.get("/api/pantry")
+def get_pantry():
+    return {"items": _pantry()}
+
+
+@app.put("/api/pantry")
+def put_pantry(body: dict):
+    seen, items = set(), []
+    for it in body.get("items", []):
+        it = str(it).strip()
+        if it and it not in seen:
+            seen.add(it)
+            items.append(it)
+    PANTRY_FILE.write_text(json.dumps({"items": items}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return {"items": items}
+
+
 @app.get("/api/random")
-def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: int = 0):
-    """翻牌子：avoid_days=N 排除最近 N 天做过的；max_minutes=M 只要 M 分钟内能做的。
+def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: int = 0,
+                difficulty: str = "", use_pantry: int = 0):
+    """翻牌子：avoid_days=N 排除最近 N 天做过的；max_minutes=M 只要 M 分钟内能做的；
+    difficulty=简单 只要省事的；use_pantry=1 优先冰箱里有食材的菜。
     条件内没菜时逐级放宽并带 relaxed 标记，绝不空手而归。"""
     rs = [r for r in storage.list_recipes() if category in (None, "", r["category"])]
     if not rs:
@@ -122,6 +148,20 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
     if max_minutes > 0:
         quick = [r for r in rs if r.get("minutes") and r["minutes"] <= max_minutes]
         rs, relaxed = (quick, relaxed) if quick else (rs, True)
+    if difficulty:
+        easy = [r for r in rs if r.get("difficulty") == difficulty]
+        rs, relaxed = (easy, relaxed) if easy else (rs, True)
+    if use_pantry:
+        pantry = _pantry()
+        def score(r: dict) -> int:
+            return sum(1 for ing in r["ingredients"]
+                       if any(it in ing["name"] or ing["name"] in it for it in pantry))
+        scored = [(score(r), r) for r in rs]
+        best = max((s for s, _ in scored), default=0)
+        if best > 0:
+            rs = [r for s, r in scored if s == best]
+        else:
+            relaxed = True
     return {**random.choice(rs), "relaxed": relaxed}
 
 
@@ -348,6 +388,43 @@ def put_shopping(body: dict):
     doc = {"items": body.get("items", [])}
     SHOPPING_FILE.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return doc
+
+
+@app.get("/api/weekreport")
+def weekreport():
+    """营养轻周报：规则版（零成本零延迟），温和提示不审判。"""
+    import re as _re
+    from collections import Counter
+
+    monday = date.today() - timedelta(days=date.today().weekday())
+    meals = [m for m in storage.list_meals() if m["date"] >= monday.isoformat()]
+    recipes = {r["id"]: r for r in storage.list_recipes()}
+    PROT = _re.compile(r"肉|鸡|鸭|鹅|牛|猪|鱼|虾|蛋|豆腐|豆干|排骨|培根|火腿|贝|蟹")
+    VEG = _re.compile(r"菜|瓜|笋|菇|芹|番茄|西红柿|萝卜|土豆|茄|豆角|芦笋|西兰花|菠菜|生菜|黄瓜|藕|山药|玉米")
+
+    protein_meals, veg_kinds, cats = 0, set(), Counter()
+    kcal = 0
+    for m in meals:
+        r = recipes.get(m["recipe_id"])
+        if not r:
+            continue
+        cats[r["category"]] += 1
+        kcal += r.get("kcal") or 0
+        ings = [i["name"] for i in r["ingredients"]]
+        if any(PROT.search(n) for n in ings):
+            protein_meals += 1
+        veg_kinds |= {n for n in ings if VEG.search(n)}
+
+    if not meals:
+        tip = ""
+    elif len(veg_kinds) < 3:
+        tip = "蔬菜种类有点少，下周添一两样绿叶菜试试？"
+    elif protein_meals < max(1, len(meals) // 2):
+        tip = "蛋白质可以再安排上一点（蛋豆鱼肉都算）。"
+    else:
+        tip = "吃得挺均衡，保持这个节奏。"
+    return {"meals": len(meals), "kcal": kcal, "protein_meals": protein_meals,
+            "veg_kinds": sorted(veg_kinds), "categories": dict(cats), "tip": tip}
 
 
 @app.get("/api/monthcard/{month}")

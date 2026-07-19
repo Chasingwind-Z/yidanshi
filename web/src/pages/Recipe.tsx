@@ -76,7 +76,7 @@ export default function RecipePage({ id }: { id: string }) {
       <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
-      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.minutes != null && `　⏱${r.minutes}分钟`}{r.kcal != null && `　≈${r.kcal}kcal`}</div>
+      <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.difficulty && `　${r.difficulty}`}{r.minutes != null && `　⏱${r.minutes}分钟`}{r.kcal != null && `　≈${r.kcal}kcal`}</div>
 
       {hasTutorial ? (
         <div className="tcard" ref={cardRef}>
@@ -163,6 +163,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
   const [steps, setSteps] = useState(r.steps.join("\n"));
   const [tips, setTips] = useState(r.tips.join("\n"));
   const [kcal, setKcal] = useState(r.kcal != null ? String(r.kcal) : "");
+  const [difficulty, setDifficulty] = useState(r.difficulty ?? "");
   const [minutes, setMinutes] = useState(r.minutes != null ? String(r.minutes) : "");
   const [err, setErr] = useState("");
 
@@ -185,6 +186,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       setSteps(x.steps.join("\n"));
       setTips(x.tips.join("\n"));
       if (x.kcal != null) setKcal(String(x.kcal));
+      if ((x as { difficulty?: string }).difficulty) setDifficulty((x as { difficulty?: string }).difficulty!);
       if (x.minutes != null) setMinutes(String(x.minutes));
       setAiText("");
     } catch (e) {
@@ -200,6 +202,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
         ...r, name, category, source,
         kcal: kcal.trim() ? Number(kcal) : null,
         minutes: minutes.trim() ? Number(minutes) : null,
+        difficulty: difficulty || null,
         ingredients: ings.split("\n").filter(s => s.trim()).map(line => {
           const [n, a] = line.split("|").map(s => s.trim());
           return { name: n, amount: a || "" };
@@ -267,12 +270,19 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       <textarea value={tips} onChange={e => setTips(e.target.value)} />
       <div className="row">
         <div>
-          <label className="f">热量（千卡/份，可空）</label>
+          <label className="f">热量（千卡/份）</label>
           <input type="number" value={kcal} onChange={e => setKcal(e.target.value)} placeholder="472" />
         </div>
         <div>
-          <label className="f">耗时（分钟，可空）</label>
+          <label className="f">耗时（分钟）</label>
           <input type="number" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="25" />
+        </div>
+        <div>
+          <label className="f">难度</label>
+          <select value={difficulty} onChange={e => setDifficulty(e.target.value)}>
+            <option value="">未定</option>
+            {["简单", "中等", "硬菜"].map(d => <option key={d}>{d}</option>)}
+          </select>
         </div>
       </div>
       {err && <div className="err">{err}</div>}

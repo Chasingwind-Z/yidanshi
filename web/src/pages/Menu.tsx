@@ -9,11 +9,16 @@ export default function Menu() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [avoid7, setAvoid7] = useState(() => localStorage.getItem("fan_avoid7") !== "0");
   const [quick30, setQuick30] = useState(() => localStorage.getItem("fan_quick30") === "1");
+  const [easy, setEasy] = useState(() => localStorage.getItem("fan_easy") === "1");
+  const [pantryFirst, setPantryFirst] = useState(() => localStorage.getItem("fan_pantry") === "1");
 
   function flip() {
     localStorage.setItem("fan_avoid7", avoid7 ? "1" : "0");
     localStorage.setItem("fan_quick30", quick30 ? "1" : "0");
-    api.random(cat, { avoidDays: avoid7 ? 7 : 0, maxMinutes: quick30 ? 30 : 0 })
+    localStorage.setItem("fan_easy", easy ? "1" : "0");
+    localStorage.setItem("fan_pantry", pantryFirst ? "1" : "0");
+    api.random(cat, { avoidDays: avoid7 ? 7 : 0, maxMinutes: quick30 ? 30 : 0,
+      difficulty: easy ? "简单" : "", usePantry: pantryFirst })
       .then(r => (location.hash = `#/recipe/${r.id}`));
   }
 
@@ -64,6 +69,8 @@ export default function Menu() {
         <div className="fanpanel">
           <label><input type="checkbox" checked={avoid7} onChange={e => setAvoid7(e.target.checked)} />最近 7 天没做过的</label>
           <label><input type="checkbox" checked={quick30} onChange={e => setQuick30(e.target.checked)} />30 分钟内能做的</label>
+          <label><input type="checkbox" checked={easy} onChange={e => setEasy(e.target.checked)} />只要简单省事的</label>
+          <label><input type="checkbox" checked={pantryFirst} onChange={e => setPantryFirst(e.target.checked)} />优先用冰箱里的食材</label>
           <button className="btn" onClick={flip}>翻牌子！</button>
         </div>
       )}

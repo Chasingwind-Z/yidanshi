@@ -1,6 +1,21 @@
 import { useEffect, useState } from "react";
 import { api, type Meal } from "../api";
 
+function WeekReport() {
+  const [r, setR] = useState<Awaited<ReturnType<typeof api.weekreport>> | null>(null);
+  useEffect(() => { api.weekreport().then(setR).catch(() => {}); }, []);
+  if (!r || r.meals === 0) return null;
+  return (
+    <div className="weekreport">
+      <p>蛋白质出现在 <b>{r.protein_meals}/{r.meals}</b> 餐 · 蔬菜 <b>{r.veg_kinds.length}</b> 种
+        {r.veg_kinds.length > 0 && <span className="dimtext">（{r.veg_kinds.slice(0, 6).join("、")}{r.veg_kinds.length > 6 ? "…" : ""}）</span>}
+      </p>
+      <p className="dimtext">{Object.entries(r.categories).map(([c, n]) => `${c}×${n}`).join(" · ")}</p>
+      {r.tip && <p className="tipline">「{r.tip}」</p>}
+    </div>
+  );
+}
+
 function MealRow({ m, onChanged }: { m: Meal; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [rating, setRating] = useState(m.rating);
@@ -53,6 +68,7 @@ function MealRow({ m, onChanged }: { m: Meal; onChanged: () => void }) {
 
 export default function Timeline() {
   const [meals, setMeals] = useState<Meal[] | null>(null);
+  const [showReport, setShowReport] = useState(false);
   const load = () => api.meals().then(setMeals);
   useEffect(() => { load(); }, []);
 
@@ -72,13 +88,15 @@ export default function Timeline() {
       <span className="seal">历</span>
       <h1>食历</h1>
       {meals.length > 0 && (
-        <div className="weekstrip">
-          <span>本周 <b>{weekMeals.length}</b> 餐{weekKcal > 0 && <>，合计 <b>≈{weekKcal}</b> kcal</>}</span>
+        <div className="weekstrip" onClick={() => setShowReport(v => !v)} style={{ cursor: "pointer" }}>
+          <span>本周 <b>{weekMeals.length}</b> 餐{weekKcal > 0 && <>，合计 <b>≈{weekKcal}</b> kcal</>}{weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
           {meals.some(m => m.date.startsWith(curMonth)) && (
-            <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer">本月食单卡</a>
+            <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer"
+              onClick={e => e.stopPropagation()}>本月食单卡</a>
           )}
         </div>
       )}
+      {showReport && <WeekReport />}
       {meals.length === 0 && (
         <div className="empty">
           还没有记录

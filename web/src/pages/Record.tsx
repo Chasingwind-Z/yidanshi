@@ -23,6 +23,47 @@ async function looksTransparent(f: File): Promise<boolean> {
   return true;
 }
 
+/** 实时取景：把盘子对进圆环，拍下即框准（需要 https 或 localhost；不支持时自动回退系统相机） */
+function CameraView({ onCapture, onCancel }: { onCapture: (f: File, c: Circle) => void; onCancel: (reason?: string) => void }) {
+  const vidRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    if (!navigator.mediaDevices?.getUserMedia) { onCancel("unavailable"); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 } } })
+      .then(s => { stream = s; if (vidRef.current) { vidRef.current.srcObject = s; vidRef.current.play(); } })
+      .catch(() => onCancel("unavailable"));
+    return () => stream?.getTracks().forEach(t => t.stop());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function shoot() {
+    const v = vidRef.current;
+    if (!v || !v.videoWidth) return;
+    const cv = document.createElement("canvas");
+    cv.width = v.videoWidth;
+    cv.height = v.videoHeight;
+    cv.getContext("2d")!.drawImage(v, 0, 0);
+    cv.toBlob(b => {
+      if (!b) return;
+      // 圆环在画面中的相对位置：横向居中、纵向 45%，半径约短边 40%（与 .ring 样式对应）
+      onCapture(new File([b], "camera.jpg", { type: "image/jpeg" }), { cx: 0.5, cy: 0.45, r: 0.4 });
+    }, "image/jpeg", 0.92);
+  }
+
+  return (
+    <div className="cameraview">
+      <video ref={vidRef} playsInline muted />
+      <div className="ring" />
+      <div className="camhint">把盘子放进圆环里 · 正上方俯拍</div>
+      <div className="cambar">
+        <button className="camcancel" onClick={() => onCancel()}>取消</button>
+        <button className="shutter" onClick={shoot} aria-label="拍照" />
+        <span style={{ width: 44 }} />
+      </div>
+    </div>
+  );
+}
+
 /** 圆形参考框：把盘子框进圆里，拖动移动、滑杆缩放 */
 function CircleCrop({ url, onDone, onCancel }: { url: string; onDone: (c: Circle) => void; onCancel: () => void }) {
   const [c, setC] = useState<Circle>({ cx: 0.5, cy: 0.5, r: 0.42 });
@@ -79,6 +120,7 @@ export default function Record() {
   const albumRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<{ f: File; url: string } | null>(null);
+  const [camera, setCamera] = useState(false);
   const [cutting, setCutting] = useState(false);
   const [options, setOptions] = useState<CardResult[]>([]);
   const [picked, setPicked] = useState<CardResult | null>(null);
@@ -152,13 +194,12 @@ export default function Record() {
     }
   }
 
-  async function crop(circle: Circle) {
-    if (!file) return;
+  async function runCutout(f: File, circle: Circle) {
     setCutting(true);
     setErr("");
-    lastShot.current = { f: file.f, circle };
+    lastShot.current = { f, circle };
     try {
-      const r = await api.cutout(file.f, { mode: "both", circle });
+      const r = await api.cutout(f, { mode: "both", circle });
       setOptions(r.results);
       if (r.results.length === 1) setPicked(r.results[0]);
       setFile(null);
@@ -168,6 +209,11 @@ export default function Record() {
     } finally {
       setCutting(false);
     }
+  }
+
+  async function crop(circle: Circle) {
+    if (!file) return;
+    await runCutout(file.f, circle);
   }
 
   async function polish() {
@@ -304,7 +350,7 @@ export default function Record() {
       ) : (
         <>
           <div className="row">
-            <button className="btn ghost" onClick={() => camRef.current?.click()}>📷 现场拍</button>
+            <button className="btn ghost" onClick={() => setCamera(true)}>📷 现场拍</button>
             <button className="btn ghost" onClick={() => albumRef.current?.click()}>🖼 从相册选</button>
           </div>
           <div className="hint">俯拍 · 盘子拍全 · 背景越素抠得越准；iPhone 长按抠好的透明图直接传也行。不拍照也可以往下记。</div>
@@ -314,6 +360,11 @@ export default function Record() {
         onChange={e => { if (e.target.files?.[0]) pickFile(e.target.files[0]); e.target.value = ""; }} />
       <input ref={albumRef} type="file" accept="image/*" hidden
         onChange={e => { if (e.target.files?.[0]) pickFile(e.target.files[0]); e.target.value = ""; }} />
+      {camera && (
+        <CameraView
+          onCapture={(f, c) => { setCamera(false); runCutout(f, c); }}
+          onCancel={reason => { setCamera(false); if (reason === "unavailable") camRef.current?.click(); }} />
+      )}
 
       <label className="f">这是哪道菜</label>
       {recent.length > 0 && (
