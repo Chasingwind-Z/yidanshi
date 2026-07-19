@@ -422,7 +422,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       <textarea value={tips} onChange={e => setTips(e.target.value)} />
       <div className="row">
         <div>
-          <label className="f">热量（留空自动按食材算）</label>
+          <label className="f">热量（留空自动按食材算；泡面等包装食品请按包装营养成分表填整份热量）</label>
           <input type="number" value={kcal} onChange={e => setKcal(e.target.value)} placeholder="472" />
         </div>
         <div>

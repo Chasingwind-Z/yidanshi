@@ -168,7 +168,9 @@ h1 { font-size: 24px; line-height: 1.3; letter-spacing: 0.06em; margin: 8px 0 20
 .dish:active { transform: scale(0.98); }
 .dish img, .dish .noimg { width: 100%; aspect-ratio: 1; object-fit: cover; background: transparent; }
 .dish img { position: relative; z-index: 1; filter: drop-shadow(0 16px 24px var(--shadow-warm)); }
-.dish .noimg { display: flex; align-items: center; justify-content: center; font-size: 44px; opacity: 0.35; }
+.dish .noimg { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-size: 36px; opacity: 1; }
+.dish .noimg::before { content: ""; position: absolute; width: 44%; aspect-ratio: 1; border: 2px dashed var(--line-box); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -62%); }
+.dish .noimg::after { content: "做好拍一张，就有封面了"; font-size: 13px; color: var(--dim); margin-top: 26px; }
 .dish .body {
   background: var(--card); border: 1px solid var(--line-hair); border-radius: 16px;
   margin-top: -16px; padding: 24px 14px 14px;
