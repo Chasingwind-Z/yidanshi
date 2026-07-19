@@ -13,6 +13,7 @@ const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.
 
 export default function RecipePage({ id }: { id: string }) {
   const [r, setR] = useState<Recipe | null>(null);
+  const [missing404, setMissing404] = useState(false);
   const [editing, setEditing] = useState(false);
   const [canIllust, setCanIllust] = useState(false);
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
@@ -32,7 +33,7 @@ export default function RecipePage({ id }: { id: string }) {
       setExporting(false);
     }
   }
-  useEffect(() => { api.recipe(id).then(setR).catch(() => setR(null)); }, [id]);
+  useEffect(() => { api.recipe(id).then(setR).catch(() => setMissing404(true)); }, [id]);
   useEffect(() => { api.aiStatus().then(s => setCanIllust(!!s.imagegen?.available)).catch(() => {}); }, []);
 
   const missing = !r?.illust ? [] : [
@@ -56,6 +57,16 @@ export default function RecipePage({ id }: { id: string }) {
     setGen({ running: false, msg: "" });
   }
 
+  if (missing404) {
+    return (
+      <div className="empty">
+        这道菜不在食单里了（可能被删除或改了名）
+        <div style={{ marginTop: 16, maxWidth: 260, marginInline: "auto" }}>
+          <a className="btn ghost" href="#/">回食单</a>
+        </div>
+      </div>
+    );
+  }
   if (!r) return <div className="loading">加载中</div>;
   if (editing) return <Editor r={r} onDone={nr => { setR(nr); setEditing(false); }} />;
 
@@ -250,7 +261,8 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       <label className="f">食材（一行一个，「名称 | 用量」）</label>
       <textarea value={ings} onChange={e => setIngs(e.target.value)} placeholder={"芦笋 | 一把\n牛排 | 1块"} />
       <label className="f">步骤（一行一步）</label>
-      <textarea value={steps} onChange={e => setSteps(e.target.value)} style={{ minHeight: 140 }} />
+      <textarea value={steps} onChange={e => setSteps(e.target.value)} style={{ minHeight: 140 }}
+        placeholder={"牛排切条腌10分钟\n芦笋焯水40秒\n热锅煎牛排，加芦笋合炒调味出锅"} />
       <label className="f">贴士（一行一条，可空）</label>
       <textarea value={tips} onChange={e => setTips(e.target.value)} />
       <div className="row">
@@ -268,6 +280,15 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
         <button className="btn ghost" onClick={() => onDone(r)}>取消</button>
         <button className="btn" onClick={save}>保存</button>
       </div>
+      {r.id && (
+        <div style={{ marginTop: 24 }}>
+          <button className="btn ghost danger" onClick={async () => {
+            if (!confirm(`删除「${r.name}」？食历里的记录会保留（仍显示菜名），插画和照片不会删。`)) return;
+            await fetch(`/api/recipes/${r.id}`, { method: "DELETE" });
+            location.hash = "#/";
+          }}>删除这道菜</button>
+        </div>
+      )}
     </>
   );
 }

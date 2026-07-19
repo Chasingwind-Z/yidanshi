@@ -174,9 +174,21 @@ def add_meal(meal: dict) -> dict:
     with _lock:
         meals = list_meals()
         meal["id"] = f"m{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # 快照菜名：菜谱日后被删/改名，食历记录依然可读
+        r = get_recipe(meal.get("recipe_id", ""))
+        if r is not None:
+            meal.setdefault("recipe_name", r["name"])
         meals.append(meal)
         _write_meals(meals)
     return meal
+
+
+def delete_recipe(rid: str) -> bool:
+    p = RECIPES_DIR / f"{rid}.md"
+    if not p.exists():
+        return False
+    p.unlink()
+    return True
 
 
 def update_meal(mid: str, patch: dict) -> dict | None:

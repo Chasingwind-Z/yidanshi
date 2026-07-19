@@ -74,7 +74,9 @@ export default function Timeline() {
       {meals.length > 0 && (
         <div className="weekstrip">
           <span>本周 <b>{weekMeals.length}</b> 餐{weekKcal > 0 && <>，合计 <b>≈{weekKcal}</b> kcal</>}</span>
-          <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer">本月食单卡</a>
+          {meals.some(m => m.date.startsWith(curMonth)) && (
+            <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer">本月食单卡</a>
+          )}
         </div>
       )}
       {meals.length === 0 && (

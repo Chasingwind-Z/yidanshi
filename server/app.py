@@ -246,9 +246,18 @@ def add_meal(body: dict):
 @app.get("/api/meals")
 def meals():
     rs = {r["id"]: r for r in storage.list_recipes()}
-    out = [{**m, "recipe_name": rs.get(m["recipe_id"], {}).get("name", m["recipe_id"]),
+    out = [{**m,
+            "recipe_name": rs.get(m["recipe_id"], {}).get("name") or m.get("recipe_name") or m["recipe_id"],
             "kcal": rs.get(m["recipe_id"], {}).get("kcal")} for m in storage.list_meals()]
     return sorted(out, key=lambda m: (m["date"], m["id"]), reverse=True)
+
+
+@app.delete("/api/recipes/{rid}")
+def delete_recipe(rid: str):
+    """删除菜谱文件；食历记录保留（靠菜名快照继续可读），照片不删。"""
+    if not storage.delete_recipe(rid):
+        raise HTTPException(404, "没有这道菜")
+    return {"ok": True}
 
 
 # ---------- 点菜（亲友只读链接） ----------

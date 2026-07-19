@@ -85,7 +85,8 @@ export default function Menu() {
           <div className="dishes">
             {shown.map(r => (
               <a className="dish" key={r.id} href={`#/recipe/${r.id}`}>
-                {r.cover ? <img src={r.cover} alt={r.name} loading="lazy" /> : <div className="noimg">🍚</div>}
+                {r.cover ? <img src={r.cover} alt={r.name} loading="lazy"
+                  onError={e => { e.currentTarget.outerHTML = '<div class="noimg">🍚</div>'; }} /> : <div className="noimg">🍚</div>}
                 <div className="body">
                   <h3>{r.name}</h3>
                   <div className="chips">

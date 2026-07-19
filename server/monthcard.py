@@ -18,7 +18,13 @@ SERIF = "/System/Library/Fonts/Songti.ttc"
 
 
 def _font(size: int, index: int = 0):
-    return ImageFont.truetype(SERIF, size, index=index)
+    for path in (SERIF, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+                 "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"):
+        try:
+            return ImageFont.truetype(path, size, index=index)
+        except OSError:
+            continue
+    return ImageFont.load_default(size)  # 非 mac/无中文字体时兜底（字形较糙但可用）
 
 
 def _rounded(im: Image.Image, radius: int) -> Image.Image:

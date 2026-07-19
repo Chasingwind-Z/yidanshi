@@ -182,6 +182,7 @@ input, textarea, select {
 }
 textarea { min-height: 88px; resize: vertical; }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+::placeholder { color: #b3a892; opacity: 1; }
 
 /* 评分条 */
 .stars { display: flex; gap: 6px; }
