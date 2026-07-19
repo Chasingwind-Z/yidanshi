@@ -1,7 +1,8 @@
-export interface Ingredient { name: string; amount: string }
+export interface Ingredient { name: string; amount: string; grams?: number | null }
 export interface Recipe {
   id: string; name: string; category: string; cover: string; source: string; created: string;
   kcal?: number | null; minutes?: number | null; difficulty?: string | null; relaxed?: boolean;
+  nutrition?: { kcal: number; protein_g: number; fat_g: number; carb_g: number; covered: number; total: number } | null;
   ingredients: Ingredient[]; steps: string[]; tips: string[];
   times: number; rating: number | null;
   illust?: { ingredients: string[]; steps: string[] };
@@ -41,6 +42,7 @@ export const api = {
     if (opts?.usePantry) q.set("use_pantry", "1");
     return j<Recipe>(fetch(`/api/random?${q}`));
   },
+  ingredientNames: () => j<{ names: string[]; defaults: Record<string, number> }>(fetch("/api/ingredient-names")),
   pantry: () => j<{ items: string[] }>(fetch("/api/pantry")),
   savePantry: (items: string[]) => j<{ items: string[] }>(fetch("/api/pantry", {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),

@@ -367,3 +367,10 @@ input[type="range"] { margin-top: 12px; accent-color: var(--accent); padding: 0;
 @keyframes spin { to { transform: rotate(1turn); } }
 @media (prefers-reduced-motion: reduce) { .loading::before { animation: none; } }
 .err { color: var(--accent); font-size: 14px; margin-top: 10px; }
+
+/* 结构化食材行 */
+.ingrow { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+.ingrow input:nth-child(1) { flex: 2; }
+.ingrow input:nth-child(2) { flex: 1.2; }
+.ingrow input:nth-child(3) { flex: 0 0 76px; }
+.ingrow .more { flex-shrink: 0; }

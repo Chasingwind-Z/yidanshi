@@ -55,8 +55,13 @@ def _parse_md(text: str) -> dict:
         line = line.strip().lstrip("-").strip()
         if not line:
             continue
-        name, _, amount = (s.strip() for s in line.partition("|"))
-        ingredients.append({"name": name, "amount": amount})
+        parts = [s.strip() for s in line.split("|")]
+        grams = None
+        if len(parts) >= 3:  # 第三段为克重：如 "55g"
+            m = re.match(r"^([\d.]+)\s*[g克]?$", parts[2])
+            if m:
+                grams = round(float(m.group(1)))
+        ingredients.append({"name": parts[0], "amount": parts[1] if len(parts) > 1 else "", "grams": grams})
 
     steps = []
     for line in sections.get("步骤", "").splitlines():
@@ -91,7 +96,13 @@ def _dump_md(r: dict) -> str:
             meta[k] = r[k]
     fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
     lines = [f"---\n{fm}\n---", "", "## 食材", ""]
-    lines += [f"- {i['name']}" + (f" | {i['amount']}" if i.get("amount") else "") for i in r.get("ingredients", [])]
+    for i in r.get("ingredients", []):
+        line = f"- {i['name']}"
+        if i.get("amount") or i.get("grams"):
+            line += f" | {i.get('amount', '')}"
+        if i.get("grams"):
+            line += f" | {round(i['grams'])}g"
+        lines.append(line)
     lines += ["", "## 步骤", ""]
     lines += [f"{n}. {s}" for n, s in enumerate(r.get("steps", []), 1)]
     if r.get("tips"):

@@ -13,7 +13,7 @@ const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.
 
 interface IngInfo {
   name: string; kcal_per_100g: number | null; protein_g: number | null;
-  fat_g: number | null; carb_g: number | null; benefits: string[]; tips: string[];
+  fat_g: number | null; carb_g: number | null; benefits: string[]; tips: string[]; source?: string;
 }
 
 /** 食材小百科：点食材弹出，AI 生成一次全食单缓存复用 */
@@ -59,7 +59,7 @@ function IngredientSheet({ name, amount, iconUrl, onClose }: { name: string; amo
                 {info.tips.map((t, i) => <p key={i}>{t}</p>)}
               </div>
             )}
-            <div className="dimtext" style={{ marginTop: 10 }}>* 每100克常见参考值（据《中国食物成分表》口径估算），仅供参考</div>
+            <div className="dimtext" style={{ marginTop: 10 }}>* 每100克参考值 · 来源：{info.source ?? "常见参考值"} · 仅供参考</div>
           </>
         )}
       </div>
@@ -134,6 +134,11 @@ export default function RecipePage({ id }: { id: string }) {
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
       <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.difficulty && `　${r.difficulty}`}{r.minutes != null && `　⏱${r.minutes}分钟`}{r.kcal != null && `　≈${r.kcal}kcal`}</div>
+      {r.nutrition && (
+        <div className="stats" style={{ marginTop: -14 }}>
+          按食材合计 ≈{r.nutrition.kcal}kcal · 蛋白{r.nutrition.protein_g}g · 脂肪{r.nutrition.fat_g}g · 碳水{r.nutrition.carb_g}g（{r.nutrition.covered}/{r.nutrition.total} 项计入）
+        </div>
+      )}
 
       {hasTutorial ? (
         <div className="tcard" ref={cardRef}>
@@ -219,7 +224,21 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
   const [name, setName] = useState(r.name);
   const [category, setCategory] = useState(r.category);
   const [source, setSource] = useState(r.source);
-  const [ings, setIngs] = useState(r.ingredients.map(i => i.amount ? `${i.name} | ${i.amount}` : i.name).join("\n"));
+  const [rows, setRows] = useState(r.ingredients.length > 0
+    ? r.ingredients.map(i => ({ name: i.name, amount: i.amount ?? "", grams: i.grams != null ? String(i.grams) : "" }))
+    : [{ name: "", amount: "", grams: "" }]);
+  const [nameDb, setNameDb] = useState<{ names: string[]; defaults: Record<string, number> }>({ names: [], defaults: {} });
+  useEffect(() => { api.ingredientNames().then(setNameDb).catch(() => {}); }, []);
+
+  function setRow(i: number, patch: Partial<{ name: string; amount: string; grams: string }>) {
+    setRows(rs => rs.map((x, j) => {
+      if (j !== i) return x;
+      const next = { ...x, ...patch };
+      // 从名单里选中且还没填克重 → 自动带默认克重
+      if (patch.name && !x.grams && nameDb.defaults[patch.name]) next.grams = String(nameDb.defaults[patch.name]);
+      return next;
+    }));
+  }
   const [steps, setSteps] = useState(r.steps.join("\n"));
   const [tips, setTips] = useState(r.tips.join("\n"));
   const [kcal, setKcal] = useState(r.kcal != null ? String(r.kcal) : "");
@@ -242,7 +261,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       const x = await api.aiExtract(isLinkMode ? "" : aiText, source, isLinkMode ? link : undefined);
       if (x.name) setName(x.name);
       if (x.category) setCategory(x.category);
-      setIngs(x.ingredients.map(i => i.amount ? `${i.name} | ${i.amount}` : i.name).join("\n"));
+      setRows(x.ingredients.map(i => ({ name: i.name, amount: i.amount ?? "", grams: i.grams != null ? String(i.grams) : "" })));
       setSteps(x.steps.join("\n"));
       setTips(x.tips.join("\n"));
       if (x.kcal != null) setKcal(String(x.kcal));
@@ -263,10 +282,10 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
         kcal: kcal.trim() ? Number(kcal) : null,
         minutes: minutes.trim() ? Number(minutes) : null,
         difficulty: difficulty || null,
-        ingredients: ings.split("\n").filter(s => s.trim()).map(line => {
-          const [n, a] = line.split("|").map(s => s.trim());
-          return { name: n, amount: a || "" };
-        }),
+        ingredients: rows.filter(x => x.name.trim()).map(x => ({
+          name: x.name.trim(), amount: x.amount.trim(),
+          grams: x.grams.trim() ? Number(x.grams) : null,
+        })),
         steps: steps.split("\n").map(s => s.trim()).filter(Boolean),
         tips: tips.split("\n").map(s => s.trim()).filter(Boolean),
       });
@@ -321,8 +340,17 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
           <input value={source} onChange={e => setSource(e.target.value)} placeholder="https://…" />
         </div>
       </div>
-      <label className="f">食材（一行一个，「名称 | 用量」）</label>
-      <textarea value={ings} onChange={e => setIngs(e.target.value)} placeholder={"芦笋 | 一把\n牛排 | 1块"} />
+      <label className="f">食材（名称可从营养库选，克重用于自动算营养）</label>
+      {rows.map((row, i) => (
+        <div className="ingrow" key={i}>
+          <input list="ingnames" placeholder="食材名" value={row.name} onChange={e => setRow(i, { name: e.target.value })} />
+          <input placeholder="用量" value={row.amount} onChange={e => setRow(i, { amount: e.target.value })} />
+          <input type="number" placeholder="克" value={row.grams} onChange={e => setRow(i, { grams: e.target.value })} />
+          <button className="more" onClick={() => setRows(rs => rs.filter((_, j) => j !== i))} aria-label="删除">✕</button>
+        </div>
+      ))}
+      <datalist id="ingnames">{nameDb.names.map(n => <option key={n} value={n} />)}</datalist>
+      <button className="btn ghost" style={{ marginTop: 6 }} onClick={() => setRows(rs => [...rs, { name: "", amount: "", grams: "" }])}>＋ 加一个食材</button>
       <label className="f">步骤（一行一步）</label>
       <textarea value={steps} onChange={e => setSteps(e.target.value)} style={{ minHeight: 140 }}
         placeholder={"牛排切条腌10分钟\n芦笋焯水40秒\n热锅煎牛排，加芦笋合炒调味出锅"} />

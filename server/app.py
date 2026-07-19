@@ -11,7 +11,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import cutout, imagegen, llm, storage
+from . import cutout, imagegen, llm, nutrition, storage
 
 app = FastAPI(title="一箪食 yidanshi")
 storage.init_dirs()
@@ -88,6 +88,7 @@ def recipe(rid: str):
     notes = [{"date": m["date"], "note": m["note"]}
              for m in storage.list_meals() if m["recipe_id"] == rid and m.get("note")]
     return {**r, "times": s.get("times", 0), "rating": s.get("rating"),
+            "nutrition": nutrition.compute(r["ingredients"]),
             "annotations": sorted(notes, key=lambda n: n["date"], reverse=True)[:5]}
 
 
@@ -168,21 +169,34 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
 ING_DB_DIR = storage.DATA / "ingredients"
 
 
+@app.get("/api/ingredient-names")
+def ingredient_names():
+    """可选食材名列表（内置库 + 用户缓存），给编辑器 datalist 用。"""
+    return {"names": nutrition.all_names(),
+            "defaults": {k: v["default_g"] for k, v in nutrition.builtin().items() if v.get("default_g")}}
+
+
 @app.get("/api/ingredient/{name}")
 def ingredient_info(name: str):
-    """食材小百科：热量/营养/功效/小贴士。AI 生成一次后缓存为文件，全食单复用。"""
+    """食材小百科：内置营养库（成分表口径，标来源）优先；没有再走用户缓存/AI 兜底。"""
     name = name.strip()[:20]
     if not name or "/" in name or name.startswith("."):
         raise HTTPException(400, "食材名不合法")
-    ING_DB_DIR.mkdir(parents=True, exist_ok=True)
-    p = ING_DB_DIR / f"{name}.json"
-    if p.exists():
-        return json.loads(p.read_text(encoding="utf-8"))
+
+    hit = nutrition.lookup(name)
+    cached = nutrition.cached(name)
+    if hit:
+        # 内置库管数值和来源；功效/贴士文案若有 AI 缓存则合并进来
+        return {**hit, "benefits": (cached or {}).get("benefits", []), "tips": (cached or {}).get("tips", [])}
+    if cached:
+        return cached
     try:
         info = llm.ingredient_info(name)
+        info["source"] = nutrition.AI_SOURCE
     except Exception as e:
         raise HTTPException(502, str(e))
-    p.write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    ING_DB_DIR.mkdir(parents=True, exist_ok=True)
+    (ING_DB_DIR / f"{name}.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return info
 
 
