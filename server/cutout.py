@@ -16,7 +16,7 @@ MODEL = os.environ.get("YIDANSHI_MODEL", "isnet-general-use")
 CARD_SIZE = 1024
 CARD_BG = (244, 239, 227, 255)  # 暖米白宣纸底（与前端 --bg 一致），盘子落在纸上
 SUBJECT_RATIO = 0.78         # 主体占卡片宽度比例
-PLATE_ASSET = Path(__file__).parent / "assets" / "plate.png"  # 手账贴纸风白瓷盘（Seedream 一次性生成）
+PLATE_ASSET = Path(__file__).parent / "assets" / "plate-photo.png"  # 摄影质感白瓷盘（与照片食物同媒介，避免插画/照片混搭违和）
 PLATE_FOOD_RATIO = 0.56      # 摆盘模式下食物占卡片宽度比例（落在盘心内）
 
 
@@ -58,9 +58,39 @@ def make_card(cut: Image.Image, size: int = CARD_SIZE) -> Image.Image:
     return card
 
 
+@lru_cache(maxsize=1)
+def _plate_base(size: int = CARD_SIZE) -> Image.Image:
+    """摄影盘素材融进纸底：径向羽化边缘，生成图与页面底色的细微色差不会露出方形接缝。"""
+    plate = Image.open(PLATE_ASSET).convert("RGBA").resize((size, size), Image.LANCZOS)
+    mask = Image.new("L", (size, size), 0)
+    from PIL import ImageDraw
+
+    d = ImageDraw.Draw(mask)
+    d.ellipse([size * 0.02, size * 0.02, size * 0.98, size * 0.98], fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(size * 0.03))
+    card = Image.new("RGBA", (size, size), CARD_BG)
+    card.paste(plate, (0, 0), mask)
+    return card
+
+
+def _harmonize(food: Image.Image) -> Image.Image:
+    """给照片食物一道轻微暖调和，让它'坐进'柔光盘面（不改变食物本身）。"""
+    from PIL import ImageEnhance
+
+    rgb = food.convert("RGB")
+    rgb = ImageEnhance.Color(rgb).enhance(1.06)
+    rgb = ImageEnhance.Brightness(rgb).enhance(1.03)
+    warm = Image.new("RGB", rgb.size, (255, 240, 214))
+    rgb = Image.blend(rgb, warm, 0.05)
+    out = rgb.convert("RGBA")
+    out.putalpha(food.getchannel("A"))
+    return out
+
+
 def make_plate_card(cut: Image.Image, size: int = CARD_SIZE) -> Image.Image:
-    """抠出的食物摆到插画瓷盘上：真照片食物 + 手账贴纸盘，美观且统一。"""
-    card = Image.open(PLATE_ASSET).convert("RGBA").resize((size, size), Image.LANCZOS)
+    """抠出的食物摆到摄影质感瓷盘上：同为照片媒介，观感统一。"""
+    card = _plate_base(size).copy()
+    cut = _harmonize(cut)
 
     target = int(size * PLATE_FOOD_RATIO)
     scale = min(target / cut.width, target / cut.height)
