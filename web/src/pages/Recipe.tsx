@@ -30,6 +30,9 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
       .catch(e => setErr(e.message));
   }, [name]);
 
+  const f = grams ? grams / 100 : null;
+  const scaled = (v: number | null) => (v == null || f == null ? null : Math.round(v * f * 10) / 10);
+
   return (
     <div className="sheetscrim" onClick={onClose}>
       <div className="ingsheet" onClick={e => e.stopPropagation()}>
@@ -38,7 +41,7 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
           <div>
             <b>{name}</b>
             {(amount || grams) && (
-              <div className="dimtext">本菜用量：{amount}{grams ? `（${grams}g${itemKcal != null ? ` · 折算 ≈${itemKcal}kcal` : ""}）` : ""}</div>
+              <div className="dimtext">本菜用量：{amount}{grams ? `（${grams}g）` : ""}</div>
             )}
           </div>
           <button className="more" onClick={onClose} aria-label="关闭">✕</button>
@@ -48,12 +51,19 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
         {info && (
           <>
             {info.kcal_per_100g != null && (
-              <div className="ingsheet-nums">
-                <div><b>{info.kcal_per_100g}</b><span>kcal/100g</span></div>
-                {info.protein_g != null && <div><b>{info.protein_g}g</b><span>蛋白质</span></div>}
-                {info.fat_g != null && <div><b>{info.fat_g}g</b><span>脂肪</span></div>}
-                {info.carb_g != null && <div><b>{info.carb_g}g</b><span>碳水</span></div>}
-              </div>
+              <>
+                {f != null && <div className="ingsheet-numcap">按本菜用量 <b>{grams}g</b> 折算 · 换克重按比例变</div>}
+                <div className="ingsheet-nums">
+                  <div>
+                    <b>{f != null ? (itemKcal ?? Math.round(info.kcal_per_100g * f)) : info.kcal_per_100g}</b>
+                    <span>{f != null ? "kcal" : "kcal/100g"}</span>
+                    {f != null && <i>{info.kcal_per_100g}/100g</i>}
+                  </div>
+                  {info.protein_g != null && <div><b>{f != null ? scaled(info.protein_g) : info.protein_g}g</b><span>蛋白质</span>{f != null && <i>{info.protein_g}g/100g</i>}</div>}
+                  {info.fat_g != null && <div><b>{f != null ? scaled(info.fat_g) : info.fat_g}g</b><span>脂肪</span>{f != null && <i>{info.fat_g}g/100g</i>}</div>}
+                  {info.carb_g != null && <div><b>{f != null ? scaled(info.carb_g) : info.carb_g}g</b><span>碳水</span>{f != null && <i>{info.carb_g}g/100g</i>}</div>}
+                </div>
+              </>
             )}
             {info.benefits.length > 0 && info.benefits.map((b, i) => <p className="ingsheet-line" key={i}>· {b}</p>)}
             {info.tips.length > 0 && (
@@ -63,7 +73,7 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
               </div>
             )}
             <div className="dimtext" style={{ marginTop: 10 }}>
-              * 每100克参考值{info.matched ? `（按「${info.matched}」计）` : ""} · 数值：{info.source ?? "常见参考值"}
+              * {f != null ? "按每100克参考值折算" : "每100克参考值"}{info.matched ? `（按「${info.matched}」计）` : ""} · 数值：{info.source ?? "常见参考值"}
               {info.text_source && info.benefits.length > 0 ? ` · 功效贴士：${info.text_source}` : ""} · 仅供参考
             </div>
           </>
