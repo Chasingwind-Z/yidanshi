@@ -112,7 +112,7 @@ function CircleCrop({ url, onDone, onCancel }: { url: string; onDone: (c: Circle
   );
 }
 
-export default function Record() {
+export default function Record({ presetId }: { presetId?: string } = {}) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [cats, setCats] = useState<string[]>([]);
   const [recent, setRecent] = useState<{ id: string; name: string }[]>([]);
@@ -127,7 +127,7 @@ export default function Record() {
   const [polishing, setPolishing] = useState(false);
   const lastShot = useRef<{ f: File; circle: Circle | null } | null>(null);
 
-  const [recipeId, setRecipeId] = useState("");
+  const [recipeId, setRecipeId] = useState(presetId ?? "");
   const [newName, setNewName] = useState("");
   const [newCat, setNewCat] = useState("");
   const [date, setDate] = useState(today());

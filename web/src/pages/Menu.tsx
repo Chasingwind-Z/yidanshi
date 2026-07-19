@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Order, type Recipe } from "../api";
+import { mergeShopping } from "../shop";
 
 export default function Menu() {
   const [cats, setCats] = useState<string[]>([]);
@@ -7,6 +8,8 @@ export default function Menu() {
   const [cat, setCat] = useState("");
   const [fan, setFan] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [q, setQ] = useState("");
+  const [shopped, setShopped] = useState<Set<string>>(new Set());
   const [avoid7, setAvoid7] = useState(() => localStorage.getItem("fan_avoid7") !== "0");
   const [quick30, setQuick30] = useState(() => localStorage.getItem("fan_quick30") === "1");
   const [easy, setEasy] = useState(() => localStorage.getItem("fan_easy") === "1");
@@ -36,8 +39,19 @@ export default function Menu() {
     api.orders().then(os => setOrders(os.filter(o => !o.done))).catch(() => {});
   }, []);
 
+  async function orderToShopping(o: Order) {
+    const rs = recipes!.filter(r => o.items.some(it => it.recipe_id === r.id));
+    if (rs.length === 0) return;
+    const cur = await api.shopping();
+    await api.saveShopping(mergeShopping(cur.items, rs));
+    setShopped(s => new Set(s).add(o.id));
+  }
+
   if (recipes === null) return <div className="loading">加载中</div>;
-  const shown = recipes.filter(r => r.category === cat);
+  const kw = q.trim();
+  const shown = kw
+    ? recipes.filter(r => r.name.includes(kw) || r.category.includes(kw) || r.ingredients.some(i => i.name.includes(kw)))
+    : recipes.filter(r => r.category === cat);
 
   return (
     <>
@@ -61,8 +75,13 @@ export default function Menu() {
             <a key={it.recipe_id} href={`#/recipe/${it.recipe_id}`} style={{ textDecoration: "underline", marginRight: 8 }}>{it.name}</a>
           ))}</p>
           {o.note && <p style={{ color: "var(--dim)" }}>「{o.note}」</p>}
-          <button className="done-btn" onClick={() =>
-            api.orderDone(o.id).then(() => setOrders(os => os.filter(x => x.id !== o.id)))}>做完了 / 知道了</button>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="done-btn" onClick={() =>
+              api.orderDone(o.id).then(() => setOrders(os => os.filter(x => x.id !== o.id)))}>做完了 / 知道了</button>
+            {shopped.has(o.id)
+              ? <a className="done-btn" href="#/shopping">已加入 ✓ 去买菜 ›</a>
+              : <button className="done-btn" onClick={() => orderToShopping(o)}>食材加入买菜清单</button>}
+          </div>
         </div>
       ))}
       {fan && (
@@ -83,12 +102,21 @@ export default function Menu() {
           </div>
         </div>
       ) : (
-        <div className="menu">
-          <div className="cats">
-            {cats.map(c => (
-              <button key={c} className={c === cat ? "on" : ""} onClick={() => setCat(c)}>{c}</button>
-            ))}
+        <>
+        {recipes.length > 5 && (
+          <div className="searchbar">
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="找菜：菜名 / 食材 / 分类" />
+            {kw && <button onClick={() => setQ("")} aria-label="清除">✕</button>}
           </div>
+        )}
+        <div className="menu">
+          {!kw && (
+            <div className="cats">
+              {cats.map(c => (
+                <button key={c} className={c === cat ? "on" : ""} onClick={() => setCat(c)}>{c}</button>
+              ))}
+            </div>
+          )}
           <div className="dishes">
             {shown.map(r => (
               <a className="dish" key={r.id} href={`#/recipe/${r.id}`}>
@@ -105,9 +133,10 @@ export default function Menu() {
                 </div>
               </a>
             ))}
-            {shown.length === 0 && <div className="empty">这个分类还没有菜</div>}
+            {shown.length === 0 && <div className="empty">{kw ? `没有和「${kw}」相关的菜` : "这个分类还没有菜"}</div>}
           </div>
         </div>
+        </>
       )}
     </>
   );

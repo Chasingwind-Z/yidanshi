@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Recipe, type ShopItem } from "../api";
-
-const SEASONING = /油|盐|糖|生抽|老抽|酱|醋|料酒|淀粉|胡椒|花椒|八角|香叶|桂皮|鸡精|味精|蚝油|冰糖|辣椒面|孜然/;
+import { mergeShopping } from "../shop";
 
 export default function Shopping() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -46,19 +45,7 @@ export default function Shopping() {
   }
 
   function generate() {
-    const merged = new Map<string, { amounts: string[]; recipes: string[] }>();
-    for (const r of recipes.filter(r => sel.has(r.id))) {
-      for (const ing of r.ingredients) {
-        const e = merged.get(ing.name) ?? { amounts: [], recipes: [] };
-        if (ing.amount) e.amounts.push(ing.amount);
-        e.recipes.push(r.name);
-        merged.set(ing.name, e);
-      }
-    }
-    const next: ShopItem[] = [...merged.entries()].map(([name, e]) => ({
-      name, amounts: e.amounts.join(" + "), recipes: [...new Set(e.recipes)].join("、"),
-      checked: false, seasoning: SEASONING.test(name),
-    })).sort((a, b) => Number(a.seasoning) - Number(b.seasoning));
+    const next = mergeShopping([], recipes.filter(r => sel.has(r.id)));
     setItems(next);
     api.saveShopping(next);
     setPicking(false);

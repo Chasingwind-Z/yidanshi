@@ -37,7 +37,7 @@ _load_secrets()
 def _config_payload() -> dict:
     cfg = json.loads(llm.CONFIG_FILE.read_text(encoding="utf-8")) if llm.CONFIG_FILE.exists() else {}
     envs = {c.get("api_key_env") for c in (cfg.get("llm", {}), cfg.get("imagegen", {})) if c.get("api_key_env")}
-    return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}),
+    return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}), "goal": cfg.get("goal", {}),
             "status": {**llm.backend_status(), "imagegen": imagegen.backend_status()},
             "secrets": {e: bool(os.environ.get(e)) for e in envs}}
 
@@ -50,7 +50,7 @@ def get_config():
 @app.put("/api/config")
 def put_config(body: dict):
     cfg = {}
-    for section in ("llm", "imagegen"):
+    for section in ("llm", "imagegen", "goal"):
         clean = {k: v for k, v in (body.get(section) or {}).items() if v not in ("", None)}
         if clean:
             cfg[section] = clean
@@ -64,6 +64,37 @@ def put_config(body: dict):
         _SECRETS_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
         os.environ.update(secrets)
     return _config_payload()
+
+
+_BACKUP_DIR = storage.DATA / "backups"
+
+
+def _backup_list() -> list[dict]:
+    if not _BACKUP_DIR.exists():
+        return []
+    return [{"name": p.name, "size_mb": round(p.stat().st_size / 1048576, 1),
+             "time": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M")}
+            for p in sorted(_BACKUP_DIR.glob("yidanshi-*.zip"), reverse=True)]
+
+
+@app.get("/api/backup")
+def list_backups():
+    return {"backups": _backup_list()}
+
+
+@app.post("/api/backup")
+def make_backup():
+    """全量备份 data/ 到 data/backups/*.zip，保留最近 5 份；密钥文件不入包。"""
+    import zipfile
+    _BACKUP_DIR.mkdir(exist_ok=True)
+    path = _BACKUP_DIR / f"yidanshi-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in storage.DATA.rglob("*"):
+            if p.is_file() and _BACKUP_DIR not in p.parents and p.name != "secrets.env":
+                z.write(p, p.relative_to(storage.DATA))
+    for old in sorted(_BACKUP_DIR.glob("yidanshi-*.zip"))[:-5]:
+        old.unlink()
+    return {"backups": _backup_list()}
 
 
 # ---------- 菜谱 ----------

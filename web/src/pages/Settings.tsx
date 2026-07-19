@@ -2,13 +2,44 @@ import { useEffect, useState } from "react";
 
 type Cfg = Record<string, any>;
 interface ConfigPayload {
-  llm: Cfg; imagegen: Cfg;
+  llm: Cfg; imagegen: Cfg; goal: Cfg;
   status: { backend: string; model: string; available: boolean; imagegen: { backend: string; model: string; available: boolean } };
   secrets: Record<string, boolean>;
 }
+interface BackupInfo { name: string; size_mb: number; time: string }
 
 async function getConfig(): Promise<ConfigPayload> {
   return (await fetch("/api/config")).json();
+}
+
+function BackupSection() {
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    fetch("/api/backup").then(r => r.json()).then(d => setBackups(d.backups)).catch(() => {});
+  }, []);
+
+  async function run() {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/backup", { method: "POST" });
+      setBackups((await r.json()).backups);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="hint" style={{ marginTop: 0 }}>
+        把 <code>data/</code>（菜谱、记录、照片）打包成 zip 存到 <code>data/backups/</code>，保留最近 5 份；密钥不入包。
+        {backups[0] && <><br />上次备份：{backups[0].time}（{backups[0].size_mb} MB · 共 {backups.length} 份）</>}
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <button className="btn ghost" disabled={busy} onClick={run}>{busy ? "备份中…" : "立即备份"}</button>
+      </div>
+    </>
+  );
 }
 
 function GuestLinkSection() {
@@ -46,11 +77,12 @@ export default function Settings() {
   const [img, setImg] = useState<Cfg>({});
   const [llmKey, setLlmKey] = useState("");
   const [imgKey, setImgKey] = useState("");
+  const [goalKcal, setGoalKcal] = useState("");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getConfig().then(c => { setCfg(c); setLlm(c.llm); setImg(c.imagegen); });
+    getConfig().then(c => { setCfg(c); setLlm(c.llm); setImg(c.imagegen); setGoalKcal(c.goal?.kcal ? String(c.goal.kcal) : ""); });
   }, []);
 
   if (!cfg) return <div className="loading">加载中</div>;
@@ -64,7 +96,7 @@ export default function Settings() {
       if (imgKey && img.api_key_env) secrets[img.api_key_env] = imgKey;
       const r = await fetch("/api/config", {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ llm, imagegen: img, secrets }),
+        body: JSON.stringify({ llm, imagegen: img, secrets, goal: { kcal: goalKcal ? Number(goalKcal) : "" } }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       const nc: ConfigPayload = await r.json();
@@ -148,6 +180,12 @@ export default function Settings() {
         去除平台水印（Seedream 支持）
       </label>
 
+      <h1 style={{ fontSize: 18, marginTop: 28 }}>健康</h1>
+      <label className="f">每日参考热量（kcal，留空则不显示对照）</label>
+      <input type="number" inputMode="numeric" value={goalKcal} onChange={e => setGoalKcal(e.target.value)}
+        placeholder="如 1800" style={{ maxWidth: 160 }} />
+      <div className="hint">设了之后食历顶部会显示「今日 ≈N / 目标」。只做参考对照，数值都是估算，看趋势就好。</div>
+
       {msg && <div className="hint" style={{ marginTop: 12 }}>{msg}</div>}
       <div style={{ marginTop: 18 }}>
         <button className="btn" disabled={saving} onClick={save}>{saving ? "保存中…" : "保存设置"}</button>
@@ -155,6 +193,9 @@ export default function Settings() {
 
       <h1 style={{ fontSize: 18, marginTop: 28 }}>点菜链接</h1>
       <GuestLinkSection />
+
+      <h1 style={{ fontSize: 18, marginTop: 28 }}>备份</h1>
+      <BackupSection />
 
       <h1 style={{ fontSize: 18, marginTop: 28 }}>数据</h1>
       <div className="hint" style={{ lineHeight: 2 }}>

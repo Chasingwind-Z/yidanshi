@@ -256,6 +256,7 @@ export default function RecipePage({ id }: { id: string }) {
 
       {r.source && <div className="source">教程来源：<a href={r.source} target="_blank" rel="noreferrer">{r.source}</a></div>}
       <div className="row" style={{ marginTop: 16 }}>
+        <a className="btn" href={`#/record/${r.id}`}>做完了？记一餐</a>
         {hasTutorial && (
           <button className="btn ghost" disabled={exporting} onClick={exportCard}>
             {exporting ? "导出中…" : "导出长图"}

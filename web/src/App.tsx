@@ -34,12 +34,13 @@ export default function App() {
   let page = <Menu />;
   if (route.startsWith("/recipe/")) page = <RecipePage id={decodeURIComponent(route.slice(8))} />;
   else if (route === "/record") page = <Record />;
+  else if (route.startsWith("/record/")) page = <Record presetId={decodeURIComponent(route.slice(8))} />;
   else if (route === "/timeline") page = <Timeline />;
   else if (route === "/new") page = <NewRecipe />;
   else if (route === "/settings") page = <Settings />;
   else if (route === "/shopping") page = <Shopping />;
 
-  const tab = route.startsWith("/recipe/") ? "/" : route;
+  const tab = route.startsWith("/recipe/") ? "/" : route.startsWith("/record/") ? "/record" : route;
   return (
     <div className="app">
       <div className="page" key={route}>{page}</div>

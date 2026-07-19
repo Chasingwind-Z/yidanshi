@@ -71,8 +71,13 @@ function MealRow({ m, onChanged }: { m: Meal; onChanged: () => void }) {
 export default function Timeline() {
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [goal, setGoal] = useState<number | null>(null);
   const load = () => api.meals().then(setMeals);
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetch("/api/config").then(r => r.json())
+      .then(c => setGoal(c.goal?.kcal ? Number(c.goal.kcal) : null)).catch(() => {});
+  }, []);
 
   if (meals === null) return <div className="loading">加载中</div>;
 
@@ -83,6 +88,8 @@ export default function Timeline() {
   const monday = new Date(Date.now() - ((new Date().getDay() + 6) % 7) * 864e5);
   const weekMeals = meals.filter(m => m.date >= fmt(monday));
   const curMonth = fmt(new Date()).slice(0, 7);
+  const todayStr = fmt(new Date());
+  const todayKcal = meals.filter(m => m.date === todayStr).reduce((s, m) => s + (m.kcal ?? 0), 0);
 
   return (
     <>
@@ -90,7 +97,9 @@ export default function Timeline() {
       <h1>食历</h1>
       {meals.length > 0 && (
         <div className="weekstrip" onClick={() => setShowReport(v => !v)} style={{ cursor: "pointer" }}>
-          <span>本周 <b>{weekMeals.length}</b> 餐{weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
+          <span>本周 <b>{weekMeals.length}</b> 餐
+            {todayKcal > 0 && <span className="dimtext">　今日 ≈{todayKcal} kcal{goal ? ` / ${goal}` : ""}</span>}
+            {weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
           {meals.some(m => m.date.startsWith(curMonth)) && (
             <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer"
               onClick={e => e.stopPropagation()}>本月食单卡</a>
