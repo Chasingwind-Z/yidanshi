@@ -11,6 +11,62 @@ const EMOJI: [RegExp, string][] = [
 ];
 const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.slice(0, 1);
 
+interface IngInfo {
+  name: string; kcal_per_100g: number | null; protein_g: number | null;
+  fat_g: number | null; carb_g: number | null; benefits: string[]; tips: string[];
+}
+
+/** 食材小百科：点食材弹出，AI 生成一次全食单缓存复用 */
+function IngredientSheet({ name, amount, iconUrl, onClose }: { name: string; amount?: string; iconUrl?: string; onClose: () => void }) {
+  const [info, setInfo] = useState<IngInfo | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    setInfo(null);
+    setErr("");
+    fetch(`/api/ingredient/${encodeURIComponent(name)}`)
+      .then(async r => { if (!r.ok) throw new Error((await r.json()).detail); return r.json(); })
+      .then(setInfo)
+      .catch(e => setErr(e.message));
+  }, [name]);
+
+  return (
+    <div className="sheetscrim" onClick={onClose}>
+      <div className="ingsheet" onClick={e => e.stopPropagation()}>
+        <div className="ingsheet-head">
+          <div className="icon">{iconUrl ? <img src={iconUrl} alt={name} /> : icon(name)}</div>
+          <div>
+            <b>{name}</b>
+            {amount && <div className="dimtext">本菜用量：{amount}</div>}
+          </div>
+          <button className="more" onClick={onClose} aria-label="关闭">✕</button>
+        </div>
+        {err && <div className="err">{err}</div>}
+        {!info && !err && <div className="loading" style={{ padding: "28px 0" }}>翻小百科中</div>}
+        {info && (
+          <>
+            {info.kcal_per_100g != null && (
+              <div className="ingsheet-nums">
+                <div><b>{info.kcal_per_100g}</b><span>kcal/100g</span></div>
+                {info.protein_g != null && <div><b>{info.protein_g}g</b><span>蛋白质</span></div>}
+                {info.fat_g != null && <div><b>{info.fat_g}g</b><span>脂肪</span></div>}
+                {info.carb_g != null && <div><b>{info.carb_g}g</b><span>碳水</span></div>}
+              </div>
+            )}
+            {info.benefits.length > 0 && info.benefits.map((b, i) => <p className="ingsheet-line" key={i}>· {b}</p>)}
+            {info.tips.length > 0 && (
+              <div className="tips" style={{ marginTop: 10 }}>
+                <b>小贴士：</b>
+                {info.tips.map((t, i) => <p key={i}>{t}</p>)}
+              </div>
+            )}
+            <div className="dimtext" style={{ marginTop: 10 }}>* 每100克常见参考值（据《中国食物成分表》口径估算），仅供参考</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function RecipePage({ id }: { id: string }) {
   const [r, setR] = useState<Recipe | null>(null);
   const [missing404, setMissing404] = useState(false);
@@ -19,6 +75,7 @@ export default function RecipePage({ id }: { id: string }) {
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
   const cardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [ingSheet, setIngSheet] = useState<{ name: string; amount?: string; iconUrl?: string } | null>(null);
 
   async function exportCard() {
     if (!cardRef.current) return;
@@ -86,7 +143,8 @@ export default function RecipePage({ id }: { id: string }) {
             <div className="tcol">
               <h4>食材准备</h4>
               {r.ingredients.map((ing, i) => (
-                <div className="ing" key={i}>
+                <button className="ing" key={i} onClick={() =>
+                  setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: r.illust?.ingredients[i] || undefined })}>
                   <div className="icon">
                     {r.illust?.ingredients[i]
                       ? <img src={r.illust.ingredients[i]} alt={ing.name} />
@@ -94,8 +152,9 @@ export default function RecipePage({ id }: { id: string }) {
                   </div>
                   <div className="n">{ing.name}</div>
                   {ing.amount && <div className="a">{ing.amount}</div>}
-                </div>
+                </button>
               ))}
+              <div className="dimtext" style={{ textAlign: "center", marginTop: 4 }}>点食材看小百科</div>
             </div>
             <div className="tcol">
               <h4>做法步骤</h4>
@@ -151,6 +210,7 @@ export default function RecipePage({ id }: { id: string }) {
         )}
         <button className="btn ghost" onClick={() => setEditing(true)}>编辑做法</button>
       </div>
+      {ingSheet && <IngredientSheet {...ingSheet} onClose={() => setIngSheet(null)} />}
     </>
   );
 }

@@ -165,6 +165,27 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
     return {**random.choice(rs), "relaxed": relaxed}
 
 
+ING_DB_DIR = storage.DATA / "ingredients"
+
+
+@app.get("/api/ingredient/{name}")
+def ingredient_info(name: str):
+    """食材小百科：热量/营养/功效/小贴士。AI 生成一次后缓存为文件，全食单复用。"""
+    name = name.strip()[:20]
+    if not name or "/" in name or name.startswith("."):
+        raise HTTPException(400, "食材名不合法")
+    ING_DB_DIR.mkdir(parents=True, exist_ok=True)
+    p = ING_DB_DIR / f"{name}.json"
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    try:
+        info = llm.ingredient_info(name)
+    except Exception as e:
+        raise HTTPException(502, str(e))
+    p.write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return info
+
+
 # ---------- 抠图 ----------
 
 @app.post("/api/cutout")
