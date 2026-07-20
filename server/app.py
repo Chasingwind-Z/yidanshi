@@ -1,6 +1,7 @@
 """一箪食 · 后端。启动：scripts/dev.sh 或 .venv/bin/uvicorn server.app:app --port 18100"""
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import random
@@ -8,8 +9,8 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import cutout, imagegen, llm, nutrition, storage
@@ -33,6 +34,27 @@ def _load_secrets() -> None:
 _load_secrets()
 
 
+# ---------- 主人令牌（可选，默认关）----------
+# 局域网自用默认不设防（手机打开即用）。要把服务暴露到公网（内网穿透/端口转发）时，
+# 在 data/secrets.env 里设 YIDANSHI_TOKEN=一串随机字符，即可给「主人接口」加一道口令：
+# 访客点菜链接（/api/guest/*）另有 guest token，不受影响；静态资源/封面图照常公开。
+OWNER_TOKEN = os.environ.get("YIDANSHI_TOKEN", "").strip()
+_PUBLIC_API = {"/api/guest/menu", "/api/guest/order"}  # 开令牌后仍对访客开放的接口
+
+
+@app.middleware("http")
+async def owner_gate(request: Request, call_next):
+    if OWNER_TOKEN:
+        p = request.url.path
+        if p.startswith("/api/") and p not in _PUBLIC_API:
+            supplied = (request.headers.get("x-token")
+                        or request.cookies.get("yidanshi_token")
+                        or request.query_params.get("token", ""))
+            if not hmac.compare_digest(supplied, OWNER_TOKEN):  # 定时安全比较，防口令探测
+                return JSONResponse({"detail": "需要主人令牌"}, status_code=401)
+    return await call_next(request)
+
+
 # ---------- 设置 ----------
 
 def _config_payload() -> dict:
@@ -40,6 +62,7 @@ def _config_payload() -> dict:
     envs = {c.get("api_key_env") for c in (cfg.get("llm", {}), cfg.get("imagegen", {})) if c.get("api_key_env")}
     return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}), "goal": cfg.get("goal", {}),
             "status": {**llm.backend_status(), "imagegen": imagegen.backend_status()},
+            "owner_token": bool(OWNER_TOKEN),
             "secrets": {e: bool(os.environ.get(e)) for e in envs}}
 
 

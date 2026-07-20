@@ -5,6 +5,7 @@ interface ConfigPayload {
   llm: Cfg; imagegen: Cfg; goal: Cfg;
   status: { backend: string; model: string; available: boolean; imagegen: { backend: string; model: string; available: boolean } };
   secrets: Record<string, boolean>;
+  owner_token?: boolean;
 }
 interface BackupInfo { name: string; size_mb: number; time: string }
 
@@ -189,6 +190,13 @@ export default function Settings() {
       {msg && <div className="hint" style={{ marginTop: 12 }}>{msg}</div>}
       <div style={{ marginTop: 18 }}>
         <button className="btn" disabled={saving} onClick={save}>{saving ? "保存中…" : "保存设置"}</button>
+      </div>
+
+      <h1 style={{ fontSize: 18, marginTop: 28 }}>访问口令</h1>
+      <div className="hint" style={{ marginTop: 0, lineHeight: 1.9 }}>
+        {cfg.owner_token
+          ? <>已开启 ✓ 主人接口都要口令。手机换设备时用魔法链接 <code>http://电脑IP:18100/?token=你的令牌</code> 打开一次即可（令牌会存本地、自动从地址栏抹掉）。</>
+          : <>当前<b>未设口令</b>——同一 Wi-Fi 局域网自用没问题。若要把服务开到公网（内网穿透 / 端口转发），先在 <code>data/secrets.env</code> 里加一行 <code>YIDANSHI_TOKEN=一串随机字符</code> 并重启，之后主人接口就要口令了；访客点菜链接不受影响。</>}
       </div>
 
       <h1 style={{ fontSize: 18, marginTop: 28 }}>点菜链接</h1>
