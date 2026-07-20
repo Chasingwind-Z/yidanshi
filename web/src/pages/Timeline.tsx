@@ -89,7 +89,10 @@ export default function Timeline() {
   const weekMeals = meals.filter(m => m.date >= fmt(monday));
   const curMonth = fmt(new Date()).slice(0, 7);
   const todayStr = fmt(new Date());
-  const todayKcal = meals.filter(m => m.date === todayStr).reduce((s, m) => s + (m.kcal ?? 0), 0);
+  const todayMeals = meals.filter(m => m.date === todayStr);
+  const todayKcal = todayMeals.reduce((s, m) => s + (m.kcal ?? 0), 0);
+  const todayUncounted = todayMeals.filter(m => m.kcal == null).length;  // 没热量的餐不进合计，得说明一声
+  const overGoal = goal != null && todayKcal > goal;
 
   return (
     <>
@@ -98,7 +101,10 @@ export default function Timeline() {
       {meals.length > 0 && (
         <div className="weekstrip" onClick={() => setShowReport(v => !v)} style={{ cursor: "pointer" }}>
           <span>本周 <b>{weekMeals.length}</b> 餐
-            {todayKcal > 0 && <span className="dimtext">　今日 ≈{todayKcal} kcal{goal ? ` / ${goal}` : ""}</span>}
+            {todayKcal > 0 && (
+              <span className="dimtext">　今日 ≈<span style={overGoal ? { color: "var(--accent)", fontWeight: 600 } : undefined}>{todayKcal}</span> kcal{goal ? ` / ${goal}` : ""}{overGoal ? " 超了" : ""}</span>
+            )}
+            {todayUncounted > 0 && <span className="dimtext">　{todayUncounted} 餐没热量未计入</span>}
             {weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
           {meals.some(m => m.date.startsWith(curMonth)) && (
             <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer"

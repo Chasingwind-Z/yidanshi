@@ -136,8 +136,8 @@ def recipe(rid: str):
 
 @app.post("/api/recipes")
 def create_recipe(body: dict):
-    if not body.get("name"):
-        raise HTTPException(400, "name required")
+    if not str(body.get("name", "")).strip():
+        raise HTTPException(400, "菜名不能为空")
     return storage.save_recipe(body)
 
 
@@ -578,6 +578,8 @@ def weekreport():
 @app.get("/api/monthcard/{month}")
 def month_card(month: str):
     """月度食单回忆卡：YYYY-MM → 一张可保存分享的小结图。"""
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):  # 挡住非法月份，别让渲染里 int() 崩成 500
+        raise HTTPException(404, "月份格式不对（应为 YYYY-MM）")
     from . import monthcard
 
     try:

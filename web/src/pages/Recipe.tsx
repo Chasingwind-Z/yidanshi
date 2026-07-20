@@ -115,6 +115,10 @@ export default function RecipePage({ id }: { id: string }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
   const [ingSheet, setIngSheet] = useState<{ name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number } | null>(null);
+  const [relaxed, setRelaxed] = useState(false);
+  useEffect(() => {
+    if (sessionStorage.getItem("fan_relaxed")) { sessionStorage.removeItem("fan_relaxed"); setRelaxed(true); }
+  }, [id]);
 
   async function exportCard() {
     if (!cardRef.current) return;
@@ -172,6 +176,12 @@ export default function RecipePage({ id }: { id: string }) {
       <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
       <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
       <h2 className="rtitle">{r.name}</h2>
+      {relaxed && (
+        <div className="relaxnote">
+          没找到完全符合筛选条件的，先给你翻了这道
+          <button onClick={() => setRelaxed(false)} aria-label="知道了">✕</button>
+        </div>
+      )}
       <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.difficulty && `　${r.difficulty}`}{r.minutes != null && `　⏱${r.minutes}分钟`}</div>
       {r.kcal_whole != null && (
         <div className="stats" style={{ marginTop: -14 }}>
@@ -334,6 +344,7 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
   }
 
   async function save() {
+    if (!name.trim()) { setErr("先给这道菜起个名字吧"); return; }
     try {
       const nr = await api.saveRecipe({
         ...r, name, category, source,

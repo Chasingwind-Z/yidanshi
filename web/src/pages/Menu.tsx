@@ -22,7 +22,12 @@ export default function Menu() {
     localStorage.setItem("fan_pantry", pantryFirst ? "1" : "0");
     api.random(cat, { avoidDays: avoid7 ? 7 : 0, maxMinutes: quick30 ? 30 : 0,
       difficulty: easy ? "简单" : "", usePantry: pantryFirst })
-      .then(r => (location.hash = `#/recipe/${r.id}`));
+      .then(r => {
+        // 后端条件内没菜时会逐级放宽并带 relaxed，翻过去时告诉用户一声，别让人以为条件生效了
+        if (r.relaxed) sessionStorage.setItem("fan_relaxed", "1");
+        location.hash = `#/recipe/${r.id}`;
+      })
+      .catch(() => alert("食单还空着，先录一道菜吧"));
   }
 
   function load() {
