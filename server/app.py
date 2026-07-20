@@ -19,15 +19,6 @@ from . import cutout, imagegen, llm, nutrition, photostore, segfood, storage
 app = FastAPI(title="一箪食 yidanshi")
 storage.init_dirs()
 
-# 只放行本机来源的浏览器页面（Taro H5 联调、web 端跨端口 dev）读取响应。
-# 不改变「谁能调接口」——任何客户端本来就能 curl；CORS 只管浏览器能否读回结果。
-# 小程序 callContainer 不是浏览器、不受同源限制，无需靠它。
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
-    allow_methods=["*"], allow_headers=["*"], allow_credentials=True,
-)
-
 # API 密钥从 data/secrets.env 加载（launchd 环境读不到 shell 变量；data/ 不进 git）
 _SECRETS_FILE = storage.DATA / "secrets.env"
 
@@ -74,6 +65,16 @@ async def owner_gate(request: Request, call_next):
             if not ok:
                 return JSONResponse({"detail": "需要主人令牌"}, status_code=401)
     return await call_next(request)
+
+
+# CORS 必须在 owner_gate **之后**注册，才能成为最外层中间件（Starlette 后注册者在外）——
+# 否则 owner_gate 短路返回的 401 拿不到 CORS 头，浏览器把「需要主人令牌」当成不明网络错。
+# 只放行本机来源的浏览器页面读取响应；不改变「谁能调接口」，小程序 callContainer 不受此限。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_methods=["*"], allow_headers=["*"], allow_credentials=True,
+)
 
 
 @app.get("/api/whoami")

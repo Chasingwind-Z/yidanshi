@@ -5,10 +5,12 @@
 - codex-cli：调本机 codex CLI
 - openai：任意 OpenAI 兼容 API（DeepSeek、Qwen、GLM 等；base_url + api_key_env + model）
 
-示例 data/config.json：
-{"llm": {"backend": "openai", "base_url": "https://api.deepseek.com/v1",
-         "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-chat"}}
-注意：DeepSeek 目前纯文本不支持图片输入；图片相关能力请用 claude-cli。
+示例 data/config.json（DeepSeek）：
+{"llm": {"backend": "openai", "base_url": "https://api.deepseek.com",
+         "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-v4-flash"}}
+注意：① 模型用 deepseek-v4-flash（旧的 deepseek-chat 已下线）、base_url 无 /v1，与本文件
+_DEEPSEEK_DEFAULTS 一致；② DeepSeek 纯文本不支持图片输入，图片相关能力请用 claude-cli。
+其实无需手配：设了 DEEPSEEK_API_KEY 且本机无 claude/codex CLI 时，自动走这套默认值。
 """
 from __future__ import annotations
 

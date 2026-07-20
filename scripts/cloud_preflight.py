@@ -254,7 +254,7 @@ def check_cos() -> str:
     have = [k for k in want if vals[k]]
     if not have:
         line(SKIP, "腾讯云 COS", "未配置 COS_SECRET_ID/KEY/REGION/BUCKET")
-        note("照片存云端靠它；未配则照片存本地。桶要开公有读，前端 downloadFile 才能拉图")
+        note("照片存云端靠它。⚠️云上务必配：容器会缩容到零，不配 COS 照片写本地盘、重启即全丢；桶要开公有读，前端 downloadFile 才能拉图")
         return SKIP
     if len(have) < len(want):
         missing = [k for k in want if not vals[k]]

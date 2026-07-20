@@ -41,17 +41,29 @@ def url_for(kind: str, name: str) -> str:
     return f"/photos/{kind}/{name}"
 
 
-def save(kind: str, name: str, data: bytes) -> str:
-    """存一张照片，返回可写进数据字段的 URL。"""
-    conf = _cos_conf()
-    if conf:
-        _cos_client(conf).put_object(Bucket=conf["COS_BUCKET"],
-                                     Key=f"photos/{kind}/{name}", Body=data)
-        return url_for(kind, name)
+def _save_local(kind: str, name: str, data: bytes) -> str:
     p = storage.PHOTOS / kind / name
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(data)
     return f"/photos/{kind}/{name}"
+
+
+def save(kind: str, name: str, data: bytes) -> str:
+    """存一张照片，返回可写进数据字段的 URL。
+
+    COS 侧任何异常（凭证错/桶名错/网络抖/SDK 缺）都不该打死拍照上传——降级写本地兜底，
+    这一张至少存下来了。部署前 scripts/cloud_preflight.py 会先探明 COS 连通性，
+    所以这里的降级只兜临时故障，不掩盖长期配错。"""
+    conf = _cos_conf()
+    if conf:
+        try:
+            _cos_client(conf).put_object(Bucket=conf["COS_BUCKET"],
+                                         Key=f"photos/{kind}/{name}", Body=data)
+            return url_for(kind, name)
+        except Exception:  # noqa: BLE001 —— COS SDK 异常类型繁杂，一律降级
+            global _client
+            _client = None  # 连接可能已坏，下次重建
+    return _save_local(kind, name, data)
 
 
 def fetch(ref: str, timeout: float = 5) -> bytes | None:
