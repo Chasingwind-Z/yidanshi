@@ -50,7 +50,8 @@ async def owner_gate(request: Request, call_next):
             supplied = (request.headers.get("x-token")
                         or request.cookies.get("yidanshi_token")
                         or request.query_params.get("token", ""))
-            if not hmac.compare_digest(supplied, OWNER_TOKEN):  # 定时安全比较，防口令探测
+            # 转 bytes 再比较：compare_digest 对含非 ASCII 的 str 会抛 TypeError → 500，转 bytes 稳（仍是定时安全比较）
+            if not hmac.compare_digest(supplied.encode("utf-8"), OWNER_TOKEN.encode("utf-8")):
                 return JSONResponse({"detail": "需要主人令牌"}, status_code=401)
     return await call_next(request)
 
@@ -161,15 +162,28 @@ def recipe(rid: str):
 def create_recipe(body: dict):
     if not str(body.get("name", "")).strip():
         raise HTTPException(400, "菜名不能为空")
+    body.pop("id", None)  # 建菜一律按菜名生成新 slug，忽略客户端传入 id（防覆盖/越目录写）
     return storage.save_recipe(body)
 
 
 @app.put("/api/recipes/{rid}")
 def update_recipe(rid: str, body: dict):
-    if storage.get_recipe(rid) is None:
-        raise HTTPException(404, "no such recipe")
-    body["id"] = rid
-    return storage.save_recipe(body)
+    old = storage.get_recipe(rid)
+    if old is None:
+        raise HTTPException(404, "菜谱不存在")
+    if not storage._ID_RE.fullmatch(rid):
+        raise HTTPException(400, "非法菜谱 id")
+    # 以旧菜谱为基底合并：body 里没带的字段沿用旧值，避免部分更新静默清空
+    #（尤其 created 不被重置为今天；AI 走 API 做局部编辑很常见）
+    merged = {**{k: old.get(k) for k in
+                 ("name", "category", "cover", "source", "created", "kcal", "minutes",
+                  "difficulty", "servings", "ingredients", "steps", "tips")},
+              **body}  # body 带的字段覆盖（含显式清空为 null）；没带的沿用旧值
+    merged["id"] = rid
+    try:
+        return storage.save_recipe(merged)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 PANTRY_FILE = storage.DATA / "pantry.json"
@@ -253,6 +267,11 @@ def ingredient_info(name: str):
     name = name.strip()[:20]
     if not name or "/" in name or name.startswith("."):
         raise HTTPException(400, "食材名不合法")
+
+    if nutrition.is_packaged(name):
+        # 成品包装食品/预制正餐/零食：确定性拦截，不查库/缓存/AI，一律留白 + 免责，绝不装懂
+        return {"name": name, "kcal_per_100g": None, "protein_g": None, "fat_g": None, "carb_g": None,
+                "benefits": [], "tips": [nutrition.PACKAGED_DISCLAIMER], "source": "成品包装食品，不做估算"}
 
     hit = nutrition.lookup(name)
     cached = nutrition.cached(name)
@@ -573,13 +592,19 @@ def weekreport():
     VEG = _re.compile(r"菜|瓜|笋|菇|芹|番茄|西红柿|萝卜|土豆|茄|豆角|芦笋|西兰花|菠菜|生菜|黄瓜|藕|山药|玉米")
 
     protein_meals, veg_kinds, cats = 0, set(), Counter()
-    kcal = 0
+    kcal, kcal_meals = 0, 0  # 只累计「有热量快照/可估」的餐，null 不当 0 混入
     for m in meals:
         r = recipes.get(m["recipe_id"])
-        if not r:
+        # 优先用记餐时的热量快照（改菜谱不追溯篡改历史），无快照的老记录再回退实时估——与 /api/meals 口径一致
+        k = m.get("kcal")
+        if k is None and r is not None:
+            k = nutrition.per_serving_kcal(r)
+        if k is not None:
+            kcal += k
+            kcal_meals += 1
+        if not r:  # 菜谱已删：热量快照仍计入上面，但没食材算不了蛋白/蔬菜/分类
             continue
         cats[r["category"]] += 1
-        kcal += nutrition.per_serving_kcal(r) or 0
         ings = [i["name"] for i in r["ingredients"]]
         if any(PROT.search(n) for n in ings):
             protein_meals += 1
@@ -593,7 +618,8 @@ def weekreport():
         tip = "蛋白质可以再安排上一点（蛋豆鱼肉都算）。"
     else:
         tip = "吃得挺均衡，保持这个节奏。"
-    return {"meals": len(meals), "kcal": kcal, "kcal_avg": round(kcal / len(meals)) if meals and kcal else None,
+    return {"meals": len(meals), "kcal": kcal, "uncounted": len(meals) - kcal_meals,
+            "kcal_avg": round(kcal / kcal_meals) if kcal_meals else None,
             "protein_meals": protein_meals,
             "veg_kinds": sorted(veg_kinds), "categories": dict(cats), "tip": tip}
 
@@ -654,6 +680,8 @@ if DIST.exists():
 
     @app.get("/{path:path}")
     def spa(path: str):
+        if path.startswith("api/"):  # 未匹配到的 /api/* 别回退 HTML 首页（会误导 API 客户端），明确 404 JSON
+            raise HTTPException(404, "接口不存在")
         if path:
             f = (DIST / path).resolve()
             # 防目录穿越：解析后必须仍在 dist 内，否则一律回退首页

@@ -7,7 +7,8 @@ function WeekReport() {
   if (!r || r.meals === 0) return null;
   return (
     <div className="weekreport">
-      {r.kcal_avg != null && <p>平均每餐 <b>≈{r.kcal_avg}</b> kcal <span className="dimtext">（{r.meals} 餐合计 ≈{r.kcal}）</span></p>}
+      {r.kcal_avg != null && <p>平均每餐 <b>≈{r.kcal_avg}</b> kcal <span className="dimtext">（{r.meals - (r.uncounted ?? 0)} 餐合计 ≈{r.kcal}{r.uncounted ? `，另 ${r.uncounted} 餐无热量未计入` : ""}）</span></p>}
+      {r.kcal_avg == null && (r.uncounted ?? 0) > 0 && <p className="dimtext">本周 {r.uncounted} 餐都没热量，无法给出均值</p>}
       <p>蛋白质出现在 <b>{r.protein_meals}/{r.meals}</b> 餐 · 蔬菜 <b>{r.veg_kinds.length}</b> 种
         {r.veg_kinds.length > 0 && <span className="dimtext">（{r.veg_kinds.slice(0, 6).join("、")}{r.veg_kinds.length > 6 ? "…" : ""}）</span>}
       </p>

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from . import storage
@@ -15,6 +16,18 @@ from . import storage
 DB_FILE = Path(__file__).parent / "assets" / "nutrition-db.json"
 USER_DIR = storage.DATA / "ingredients"
 AI_SOURCE = "AI 估算（参考《中国食物成分表》口径，仅供参考）"
+
+# 成品包装食品/预制正餐/零食：品牌配方差异极大，绝不给精确数值（宁可留白也不装懂）。
+# 注意：不含 培根/火腿肠/腊肉/午餐肉 等「加工配料」——那些按成分表照收。
+PACKAGED_RE = re.compile(
+    r"方便面|泡面|杯面|碗面|火鸡面|自[热嗨]|速冻|冻干|预制菜|料理包|方便米饭|"
+    r"薯片|薯条|锅巴|辣条|膨化|饼干|威化|曲奇|雪饼|仙贝|能量棒|蛋黄派")
+PACKAGED_DISCLAIMER = "不同品牌配方差异大，请以包装营养成分表为准"
+
+
+def is_packaged(name: str) -> bool:
+    return bool(PACKAGED_RE.search(name or ""))
+
 
 _db: dict | None = None
 
@@ -61,10 +74,9 @@ def compute(ingredients: list[dict]) -> dict | None:
     missing: list[str] = []
     covered = 0
     for ing in ingredients:
-        g = ing.get("grams")
-        if not isinstance(g, (int, float)) or g <= 0:  # 负数/零/非数字一律当无克重
-            g = None
-        info = (lookup(ing["name"]) or cached(ing["name"])) if g else None
+        g = storage.coerce_grams(ing.get("grams"))  # 数字/数字字符串收，负零非法当无克重
+        # 成品包装食品即便标了克重也不折算（数值不可信），计入 missing 让用户按包装填
+        info = (lookup(ing["name"]) or cached(ing["name"])) if (g and not is_packaged(ing["name"])) else None
         if not g or not info or info.get("kcal_per_100g") is None:
             per_item.append(None)
             missing.append(ing["name"])

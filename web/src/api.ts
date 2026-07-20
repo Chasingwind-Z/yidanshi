@@ -48,7 +48,7 @@ export const api = {
   savePantry: (items: string[]) => j<{ items: string[] }>(fetch("/api/pantry", {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
   })),
-  weekreport: () => j<{ meals: number; kcal: number; kcal_avg: number | null; protein_meals: number; veg_kinds: string[];
+  weekreport: () => j<{ meals: number; kcal: number; uncounted?: number; kcal_avg: number | null; protein_meals: number; veg_kinds: string[];
     categories: Record<string, number>; tip: string }>(fetch("/api/weekreport")),
   nutritionPreview: (ingredients: Ingredient[]) =>
     j<{ kcal?: number; protein_g?: number; fat_g?: number; carb_g?: number; missing?: string[] }>(
