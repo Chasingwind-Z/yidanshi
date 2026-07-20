@@ -1,0 +1,94 @@
+.pagehead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.fanbtn {
+  border: 2rpx solid var(--line-box);
+  border-radius: 16rpx;
+  padding: 12rpx 24rpx;
+  font-size: 27rpx;
+  color: var(--dim);
+  margin-top: 12rpx;
+}
+
+.searchbar {
+  background: var(--card);
+  border: 2rpx solid var(--line-box);
+  border-radius: 16rpx;
+  padding: 18rpx 24rpx;
+  font-size: 29rpx;
+  margin-bottom: 24rpx;
+}
+
+.cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.cat {
+  border: 2rpx solid var(--line-box);
+  border-radius: 999rpx;
+  padding: 10rpx 28rpx;
+  font-size: 28rpx;
+  color: var(--dim);
+  font-family: "Kaiti SC", "STKaiti", serif;
+
+  &.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+}
+
+.dish {
+  background: var(--card);
+  border: 2rpx solid var(--line-box);
+  border-radius: 24rpx;
+  overflow: hidden;
+  margin-bottom: 28rpx;
+
+  .cover {
+    width: 100%;
+    height: 420rpx;
+    display: block;
+  }
+
+  .noimg {
+    width: 100%;
+    height: 300rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 80rpx;
+    background: rgba(47, 42, 34, 0.04);
+  }
+
+  .body {
+    padding: 22rpx 26rpx 26rpx;
+  }
+
+  .name {
+    font-family: "Kaiti SC", "STKaiti", serif;
+    font-size: 36rpx;
+    font-weight: 600;
+  }
+
+  .chips {
+    display: flex;
+    gap: 12rpx;
+    margin-top: 12rpx;
+  }
+
+  .chip {
+    border: 2rpx solid var(--line-box);
+    border-radius: 999rpx;
+    padding: 4rpx 18rpx;
+    font-size: 23rpx;
+    color: var(--dim);
+  }
+}
