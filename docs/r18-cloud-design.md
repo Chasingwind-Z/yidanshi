@@ -54,9 +54,9 @@
 ## 小程序（新目录 miniapp/，Taro 4 + React + TS）
 
 - 页面 v1：食单(index)、菜谱详情、记一餐、食历、买菜、设置（guest 点菜后续）。TabBar 同 Web：食单/记一餐/买菜/食历。
-- `src/api.ts`：统一 `request(path, method, data)`——weapp 环境走 `Taro.cloud.callContainer({config:{env:'prod-d7g7gzmcm6b602bda'}, path, header:{'X-WX-SERVICE':'yidanshi'}, …})`；h5 dev 走 fetch `http://127.0.0.1:18100`（本地联调用）。
+- `src/api.ts`：统一 `request(path, method, data)`——weapp 环境走 `Taro.cloud.callContainer({config:{env:CLOUD_ENV}, path, header:{'X-WX-SERVICE':SERVICE}, …})`（两常量在 src/config.ts）；h5 dev 走 fetch `http://127.0.0.1:18100`（本地联调用）。
 - 主题：把 web/src/index.css 的宣纸配色（--bg #f4efe3 / --card #fdfaf3 / --ink #2f2a22 / --dim #6f6454 / --accent #b0392b）搬进 app.scss。
-- `project.config.json` appid=wx550675e89dfff867。photos 域名后续在小程序后台配 downloadFile 合法域名。
+- `project.config.json` 填部署者自己的 appid。photos 域名后续在小程序后台配 downloadFile 合法域名。
 - v1 拍照：Taro.chooseMedia + 上传 /api/cutout（云端=圆框/segfood）。插画生成、导出长图不进 v1。
 
 ## 验收线
