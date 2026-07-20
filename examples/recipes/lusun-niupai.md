@@ -2,15 +2,20 @@
 id: lusun-niupai
 name: 芦笋牛排
 category: 小炒
-source: "https://v.douyin.com/EUzyG23PoEI/"
-created: 2026-07-17
+source: https://v.douyin.com/EUzyG23PoEI/
+created: '2026-07-17'
 ---
 
 ## 食材
 
-- 芦笋 | 一把
-- 牛排 | 1块
-- 蒜 | 4瓣
+- 芦笋 | 一把 | 150g
+- 牛排 | 1块 | 150g
+- 蒜 | 4瓣 | 15g
+- 食用油 | 喷一层 | 5g
+- 生抽 | 1勺 | 15g
+- 蚝油 | 1勺 | 15g
+- 黑胡椒 | 少许 | 1g
+- 盐 | 少许 | 2g
 
 ## 步骤
 
