@@ -1,6 +1,6 @@
 # R18 设计契约：小程序 + 微信云托管（多 agent 共用）
 
-坐标：AppID `wx550675e89dfff867` · 云托管环境 `prod-d7g7gzmcm6b602bda` · 服务名约定 `yidanshi`。
+坐标：AppID/云托管环境 ID 见 miniapp/src/config.ts（部署者各填各的）· 服务名约定 `yidanshi`。
 原则：**本地 Web 部署零行为变化**（zzf 天天在用）；所有云能力走环境变量开关，默认=现状。
 
 ## 架构
