@@ -1,0 +1,27 @@
+/* 设置 */
+.aibox {
+  margin-bottom: 6px;
+}
+.goalrow {
+  max-width: 160px;
+}
+.acts {
+  margin-top: 18px;
+}
+.acts-sm {
+  margin-top: 8px;
+}
+.linkbox {
+  margin-top: 8px;
+  background: var(--card);
+  border: 1px solid var(--line-hair);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--dim);
+  word-break: break-all;
+}
+.nomt {
+  margin-top: 0;
+}

@@ -1,0 +1,36 @@
+/* 记一餐 */
+.preview {
+  border-radius: 16px;
+  overflow: hidden;
+  margin-top: 10px;
+  border: 1px solid var(--line-hair);
+}
+.previewimg {
+  width: 100%;
+  display: block;
+}
+.acts {
+  margin-top: 18px;
+}
+.acts-sm {
+  margin-top: 10px;
+}
+.recentchips {
+  margin-bottom: 8px;
+}
+.datechips {
+  margin-bottom: 8px;
+}
+.newrow {
+  margin-top: 10px;
+}
+.newrow .grow {
+  flex: 2;
+}
+.newrow .catcol {
+  flex: 1;
+  max-width: 130px;
+}
+.nomt {
+  margin-top: 0;
+}

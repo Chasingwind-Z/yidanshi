@@ -1,0 +1,86 @@
+/* 买菜清单 */
+.shopitem {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--line-hair);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.shopitem .checkbox {
+  align-self: center;
+}
+.checkbox {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid var(--line-box);
+  background: var(--card);
+  color: var(--accent-ink);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.checkbox.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.shopitem .n {
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.shopitem .a {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+  flex-shrink: 0;
+}
+.shopitem .r {
+  font-size: 12px;
+  color: var(--dim);
+  margin-left: auto;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.shopitem.done {
+  opacity: 0.45;
+}
+.shopitem.done .n {
+  text-decoration: line-through;
+}
+
+.pantrybox .addrow {
+  margin-top: 8px;
+}
+.pantrybox .grow {
+  flex: 1;
+}
+.pantrybox .addbtn {
+  flex: 0 0 90px;
+}
+.pickchips {
+  margin-top: 10px;
+}
+.acts {
+  margin-top: 18px;
+}
+.seasonhead {
+  margin: 16px 0 8px;
+}
+.nomt {
+  margin-top: 0;
+}
+.empty-act {
+  margin-top: 16px;
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+}

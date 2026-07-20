@@ -1,0 +1,324 @@
+/* 菜谱详情 / 教程卡（册页界栏质感） */
+.hero {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line-hair);
+}
+.heroimg {
+  width: 100%;
+  display: block;
+}
+.rtitle {
+  margin: 16px 0 4px;
+  font-size: 21px;
+  line-height: 1.3;
+  font-family: var(--serif);
+  font-weight: 700;
+}
+.stats {
+  font-family: var(--mono);
+  color: var(--dim);
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+.kcalline {
+  margin-top: -14px;
+}
+
+.tcard {
+  background: var(--card);
+  border: 1px solid var(--line-box);
+  border-radius: 8px;
+  padding: 24px 16px 16px;
+  margin-top: 20px;
+  box-shadow: inset 0 0 0 4px var(--card), inset 0 0 0 5px var(--line-hair);
+}
+.tname {
+  text-align: center;
+  font-size: 30px;
+  font-weight: 700;
+  font-family: var(--serif);
+  letter-spacing: 6px;
+  margin: 8px 0 2px;
+}
+.tby {
+  text-align: center;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.tgrid {
+  display: flex;
+  border-top: 3px double var(--line-box);
+  padding-top: 16px;
+}
+.tcol-ing {
+  width: 96px;
+  flex-shrink: 0;
+  padding-right: 12px;
+  box-sizing: border-box;
+}
+.tcol-steps {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid var(--line-box);
+  padding-left: 14px;
+}
+.th4 {
+  text-align: center;
+  font-size: 15px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: 2px;
+  border-bottom: 1px solid var(--line-box);
+}
+.ing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 14px;
+  width: 100%;
+}
+.ing .icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  overflow: hidden;
+}
+.iconimg {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+.ing .n {
+  font-size: 13px;
+  margin-top: 5px;
+  font-family: var(--serif);
+}
+.ing .a {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: var(--mono);
+}
+.tap-hint {
+  text-align: center;
+  margin-top: 4px;
+}
+.step {
+  display: flex;
+  gap: 10px;
+  border: 1px solid var(--line-box);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.step .num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--card);
+  font-weight: 700;
+  font-family: var(--mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.stepbody {
+  min-width: 0;
+  flex: 1;
+}
+.steptext {
+  font-size: 14.5px;
+}
+.stepimg {
+  width: 100%;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.tips {
+  border: 1px solid var(--line-box);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-top: 4px;
+}
+.tips-b {
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-family: var(--serif);
+  font-weight: 700;
+}
+.tips-p {
+  font-size: 13.5px;
+  color: #57503f;
+}
+
+/* 朱批：历次记录的备注化作红批注 */
+.zhupi {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+}
+.zhupi-b {
+  font-family: var(--serif);
+  color: var(--accent);
+  font-size: 14px;
+  margin-bottom: 6px;
+  letter-spacing: 3px;
+  font-weight: 700;
+}
+.zhupi-p {
+  font-size: 13.5px;
+  color: var(--accent);
+  line-height: 1.8;
+  font-family: var(--serif);
+}
+.zhupi-date {
+  opacity: 0.65;
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-right: 6px;
+}
+
+.source {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--dim);
+  word-break: break-all;
+}
+.srclink {
+  color: var(--accent);
+}
+.record-cta {
+  margin-top: 16px;
+}
+.backhome {
+  margin-top: 16px;
+  max-width: 260px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 食材小百科弹卡 */
+.sheetscrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: rgba(47, 42, 34, 0.35);
+  display: flex;
+  align-items: flex-end;
+}
+.ingsheet {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  background: var(--card);
+  border-radius: 20px 20px 0 0;
+  padding: 18px 18px 30px;
+  box-shadow: 0 -8px 30px rgba(80, 60, 30, 0.25);
+  box-sizing: border-box;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.ingsheet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ingsheet-head .icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  overflow: hidden;
+  font-size: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ingsheet-head .titlebox {
+  flex: 1;
+  min-width: 0;
+}
+.ingsheet-head .iname {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 700;
+}
+.ingsheet-head .close {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.ingtable {
+  margin: 12px 0 6px;
+  background: var(--card2);
+  border-radius: 12px;
+  padding: 12px;
+}
+.itr {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.itr:last-child {
+  margin-bottom: 0;
+}
+.itr .il {
+  flex: 1.3;
+  font-size: 12px;
+  color: var(--dim);
+  text-align: left;
+  white-space: nowrap;
+  padding-right: 6px;
+}
+.itr .ih {
+  flex: 1;
+  font-size: 11px;
+  color: var(--dim);
+  text-align: center;
+}
+.itr .iv {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 14px;
+  text-align: center;
+}
+.itr .ac {
+  color: var(--accent);
+  font-weight: 600;
+}
+.ingsheet-note {
+  font-size: 12px;
+  color: var(--dim);
+  margin: 0 0 8px;
+}
+.ingsheet-line {
+  font-size: 14px;
+  line-height: 1.8;
+}
+.sheettips {
+  margin-top: 10px;
+}
+.foot {
+  margin-top: 10px;
+}

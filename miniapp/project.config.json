@@ -1,0 +1,27 @@
+{
+  "miniprogramRoot": "dist/",
+  "projectname": "yidanshi",
+  "description": "一箪食 · 私人食单手账",
+  "appid": "wx550675e89dfff867",
+  "setting": {
+    "urlCheck": true,
+    "es6": false,
+    "enhance": false,
+    "postcss": false,
+    "minified": false,
+    "coverView": true,
+    "nodeModules": false,
+    "compileHotReLoad": false,
+    "checkInvalidKey": true,
+    "checkSiteMap": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.7.0",
+  "srcMiniprogramRoot": "dist/",
+  "condition": {}
+}
