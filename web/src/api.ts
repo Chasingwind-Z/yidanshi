@@ -21,7 +21,13 @@ export interface Meal {
 
 async function j<T>(res: Promise<Response>): Promise<T> {
   const r = await res;
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))).detail;
+    // FastAPI 的 422 detail 是数组，直接塞进 Error 会显示成 [object Object]
+    const msg = Array.isArray(d) ? d.map((x: { msg?: string }) => x?.msg).filter(Boolean).join("；")
+      : typeof d === "string" ? d : "";
+    throw new Error(msg || r.statusText);
+  }
   return r.json();
 }
 

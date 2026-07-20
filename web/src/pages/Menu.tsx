@@ -10,6 +10,7 @@ export default function Menu() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [q, setQ] = useState("");
   const [shopped, setShopped] = useState<Set<string>>(new Set());
+  const [err, setErr] = useState("");
   const [avoid7, setAvoid7] = useState(() => localStorage.getItem("fan_avoid7") !== "0");
   const [quick30, setQuick30] = useState(() => localStorage.getItem("fan_quick30") === "1");
   const [easy, setEasy] = useState(() => localStorage.getItem("fan_easy") === "1");
@@ -37,7 +38,8 @@ export default function Menu() {
       setCats(all);
       setRecipes(recipes);
       setCat(c => (c && all.includes(c) ? c : all[0] || ""));
-    });
+      setErr("");
+    }).catch(e => setErr((e as Error).message));  // 不 catch 的话任何 5xx 都是永久「加载中」
   }
   useEffect(() => {
     load();
@@ -52,7 +54,12 @@ export default function Menu() {
     setShopped(s => new Set(s).add(o.id));
   }
 
-  if (recipes === null) return <div className="loading">加载中</div>;
+  if (recipes === null) {
+    return err
+      ? <div className="empty">食单没能读出来<div className="dimtext" style={{ margin: "8px 0 16px" }}>{err}</div>
+          <button className="btn" onClick={load}>重试</button></div>
+      : <div className="loading">加载中</div>;
+  }
   const kw = q.trim();
   const shown = kw
     ? recipes.filter(r => r.name.includes(kw) || r.category.includes(kw) || r.ingredients.some(i => i.name.includes(kw)))

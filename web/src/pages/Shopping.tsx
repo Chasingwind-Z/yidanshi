@@ -10,11 +10,13 @@ export default function Shopping() {
   const [pantry, setPantry] = useState<string[]>([]);
   const [pantryInput, setPantryInput] = useState("");
 
-  useEffect(() => {
-    api.recipes().then(({ recipes }) => setRecipes(recipes));
-    api.shopping().then(d => setItems(d.items));
+  const [err, setErr] = useState("");
+  function load() {
+    api.recipes().then(({ recipes }) => setRecipes(recipes)).catch(e => setErr((e as Error).message));
+    api.shopping().then(d => { setItems(d.items); setErr(""); }).catch(e => setErr((e as Error).message));
     api.pantry().then(d => setPantry(d.items)).catch(() => {});
-  }, []);
+  }
+  useEffect(() => { load(); }, []);
 
   function addPantry() {
     const names = pantryInput.split(/[、,，\s]+/).map(x => x.trim()).filter(Boolean);
@@ -38,7 +40,12 @@ export default function Shopping() {
     api.savePantry(next);
   }
 
-  if (items === null) return <div className="loading">加载中</div>;
+  if (items === null) {
+    return err
+      ? <div className="empty">买菜清单没能读出来<div className="dimtext" style={{ margin: "8px 0 16px" }}>{err}</div>
+          <button className="btn" onClick={load}>重试</button></div>
+      : <div className="loading">加载中</div>;
+  }
 
   function toggleSel(id: string) {
     setSel(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });

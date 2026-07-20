@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import math
 import os
 import random
 import re
@@ -123,7 +124,9 @@ def make_backup():
         for p in storage.DATA.rglob("*"):
             if p.is_file() and _BACKUP_DIR not in p.parents and p.name != "secrets.env":
                 z.write(p, p.relative_to(storage.DATA))
-    for old in sorted(_BACKUP_DIR.glob("yidanshi-*.zip"))[:-5]:
+    # 按修改时间排（不按文件名）：手工放进来的 yidanshi-手动备份.zip 会排到日期名之后，
+    # 被当成「最新」反而挤掉一份真正最新的
+    for old in sorted(_BACKUP_DIR.glob("yidanshi-*.zip"), key=lambda p: p.stat().st_mtime)[:-5]:
         old.unlink()
     return {"backups": _backup_list()}
 
@@ -158,12 +161,57 @@ def recipe(rid: str):
             "annotations": sorted(notes, key=lambda n: n["date"], reverse=True)[:5]}
 
 
+def _clean_recipe(r: dict) -> dict:
+    """把菜谱字段规整成落库前的合法形状：类型不对的直接 400，别一路裸奔到 500。
+    （第3轮 agent 实测：ingredients=null / "字符串" / 食材缺 name / servings={} 全是 500）"""
+    out = dict(r)
+
+    def _list(key):
+        v = out.get(key)
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            raise HTTPException(400, f"{key} 应该是数组")
+        return v
+
+    ings = []
+    for i in _list("ingredients"):
+        if not isinstance(i, dict) or not str(i.get("name", "")).strip():
+            raise HTTPException(400, "每个食材都要有名字")
+        ings.append({"name": str(i["name"]).strip(), "amount": str(i.get("amount", "")).strip(),
+                     "grams": storage.coerce_grams(i.get("grams"))})
+    out["ingredients"] = ings
+    out["steps"] = [str(s).strip() for s in _list("steps") if str(s).strip()]
+    out["tips"] = [str(t).strip() for t in _list("tips") if str(t).strip()]
+
+    def _int(key, lo, hi, default=None):
+        v = out.get(key)
+        if v is None or v == "":
+            return default
+        if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+            raise HTTPException(400, f"{key} 应该是数字")
+        try:
+            f = float(v)
+            if not math.isfinite(f):  # 1e400 → inf，int(inf) 抛 OverflowError 会裸奔成 500
+                raise ValueError
+            n = int(f)
+        except (TypeError, ValueError, OverflowError):
+            raise HTTPException(400, f"{key} 应该是数字")
+        return max(lo, min(hi, n))
+
+    out["servings"] = _int("servings", 1, 99, 1) or 1   # 上界防 999999999 把每餐热量摊成 0
+    out["kcal"] = _int("kcal", 0, 100_000)
+    out["minutes"] = _int("minutes", 0, 10_000)
+    return out
+
+
 @app.post("/api/recipes")
 def create_recipe(body: dict):
     if not str(body.get("name", "")).strip():
         raise HTTPException(400, "菜名不能为空")
     body.pop("id", None)  # 建菜一律按菜名生成新 slug，忽略客户端传入 id（防覆盖/越目录写）
-    return storage.save_recipe(body)
+    r = storage.save_recipe(_clean_recipe(body))
+    return storage.get_recipe(r["id"]) or r
 
 
 @app.put("/api/recipes/{rid}")
@@ -181,9 +229,10 @@ def update_recipe(rid: str, body: dict):
               **body}  # body 带的字段覆盖（含显式清空为 null）；没带的沿用旧值
     merged["id"] = rid
     try:
-        return storage.save_recipe(merged)
+        storage.save_recipe(_clean_recipe(merged))
     except ValueError as e:
         raise HTTPException(400, str(e))
+    return storage.get_recipe(rid)  # 回落库后重新解析的结果，别回内存里的 merged（口径才一致）
 
 
 PANTRY_FILE = storage.DATA / "pantry.json"
@@ -222,7 +271,10 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
     relaxed = False
     if avoid_days > 0:
         cutoff = (date.today() - timedelta(days=avoid_days)).isoformat()
-        recent = {m["recipe_id"] for m in storage.list_meals() if m["date"] >= cutoff}
+        today = date.today().isoformat()
+        # 同样要上界：一条误填成 2027 年的记录会让这道菜「永远算刚吃过」，再也翻不到牌
+        recent = {m["recipe_id"] for m in storage.list_meals()
+                  if cutoff <= str(m.get("date", "")) <= today}
         fresh = [r for r in rs if r["id"] not in recent]
         rs, relaxed = (fresh, relaxed) if fresh else (rs, True)
     if max_minutes > 0:
@@ -426,7 +478,11 @@ def add_meal(body: dict):
     mdate = _clean_date(body.get("date"))
 
     r = storage.get_recipe(rid)
-    card = f"/photos/cards/{body['photo_id']}.png" if body.get("photo_id") else ""
+    # photo_id 直接拼进路径，必须是干净 id（否则 ../ 之类脏值会永久留在 meals.json 里）
+    pid = str(body.get("photo_id", "")).strip()
+    if pid and not storage.valid_id(pid.lower()):
+        raise HTTPException(400, "照片 id 不合法")
+    card = f"/photos/cards/{pid}.png" if pid else ""
     meal = storage.add_meal({
         "recipe_id": rid,
         "date": mdate,
@@ -454,7 +510,9 @@ def meals():
         out.append({**m,
                     "recipe_name": rs.get(m["recipe_id"], {}).get("name") or m.get("recipe_name") or m["recipe_id"],
                     "kcal": kcal})
-    return sorted(out, key=lambda m: (m["date"], m["id"]), reverse=True)
+    # 排序键强制转字符串：手改坏的 meals.json（date 成了数字）会让比较抛 TypeError，
+    # 整个端点 500、食历页永久转圈——数据脏也得让人打得开页面
+    return sorted(out, key=lambda m: (str(m.get("date", "")), str(m.get("id", ""))), reverse=True)
 
 
 @app.delete("/api/recipes/{rid}")
@@ -500,7 +558,9 @@ def guest_link(reset: bool = False):
 def guest_menu(t: str):
     _check_guest(t)
     stats = storage.recipe_stats()
-    out = [{k: r.get(k) for k in ("id", "name", "category", "cover", "minutes")}
+    # servings 也要给：kcal 这里是「每餐」值，访客拿不到 servings 就没法标「/餐」，
+    # 会把 907 读成整道菜的热量（主人页有 servings 所以标了 /餐，两边口径别打架）
+    out = [{k: r.get(k) for k in ("id", "name", "category", "cover", "minutes", "servings")}
            | {"times": stats.get(r["id"], {}).get("times", 0), "rating": stats.get(r["id"], {}).get("rating"),
               "kcal": nutrition.per_serving_kcal(r)}
            for r in storage.list_recipes()]
@@ -586,7 +646,10 @@ def weekreport():
     from collections import Counter
 
     monday = date.today() - timedelta(days=date.today().weekday())
-    meals = [m for m in storage.list_meals() if m["date"] >= monday.isoformat()]
+    # 上界不能省：日期填成 2027 年的记录会永久混进「本周」（字符串比较 "2027-.." >= 本周一恒真）
+    next_monday = (monday + timedelta(days=7)).isoformat()
+    meals = [m for m in storage.list_meals()
+             if monday.isoformat() <= str(m.get("date", "")) < next_monday]
     recipes = {r["id"]: r for r in storage.list_recipes()}
     PROT = _re.compile(r"肉|鸡|鸭|鹅|牛|猪|鱼|虾|蛋|豆腐|豆干|排骨|培根|火腿|贝|蟹")
     VEG = _re.compile(r"菜|瓜|笋|菇|芹|番茄|西红柿|萝卜|土豆|茄|豆角|芦笋|西兰花|菠菜|生菜|黄瓜|藕|山药|玉米")
@@ -619,6 +682,8 @@ def weekreport():
     else:
         tip = "吃得挺均衡，保持这个节奏。"
     return {"meals": len(meals), "kcal": kcal, "uncounted": len(meals) - kcal_meals,
+            # 菜谱已删的餐算进 meals 但没食材可分类，单列出来，免得分类合计和总餐数对不上
+            "uncategorized": len(meals) - sum(cats.values()),
             "kcal_avg": round(kcal / kcal_meals) if kcal_meals else None,
             "protein_meals": protein_meals,
             "veg_kinds": sorted(veg_kinds), "categories": dict(cats), "tip": tip}
@@ -642,7 +707,18 @@ def month_card(month: str):
 
 @app.put("/api/meals/{mid}")
 def update_meal(mid: str, body: dict):
-    m = storage.update_meal(mid, body)
+    # 与 POST 用同一套校验：改记录曾是无校验直写入口，清空日期就能把非法值落库，
+    # 之后 /api/meals 按 date 排序会崩 500，食历页永久转圈（第3轮 agent 实测）
+    patch = dict(body)
+    if "date" in patch:
+        if not patch["date"]:  # 建记录时空日期默认今天是合理的；改记录时清空不该把它悄悄搬到今天
+            raise HTTPException(400, "日期不能为空")
+        patch["date"] = _clean_date(patch["date"])
+    if "rating" in patch:
+        patch["rating"] = _clean_rating(patch["rating"])
+    if "note" in patch:
+        patch["note"] = str(patch["note"])[:500]
+    m = storage.update_meal(mid, patch)
     if m is None:
         raise HTTPException(404, "没有这条记录")
     return m
@@ -680,7 +756,10 @@ if DIST.exists():
 
     @app.get("/{path:path}")
     def spa(path: str):
-        if path.startswith("api/"):  # 未匹配到的 /api/* 别回退 HTML 首页（会误导 API 客户端），明确 404 JSON
+        # 未匹配到的 api 路径别回退 HTML 首页（会误导 API 客户端），明确 404 JSON。
+        # 大小写与裸 /api 都要盖住：macOS 上 /API/xxx 同样会被当接口调
+        low = path.lower()
+        if low == "api" or low.startswith("api/"):
             raise HTTPException(404, "接口不存在")
         if path:
             f = (DIST / path).resolve()

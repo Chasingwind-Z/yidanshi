@@ -101,7 +101,8 @@ export default function Guest({ token }: { token: string }) {
                       <span className="chip">★ {r.rating?.toFixed(1) ?? "—"}</span>
                       <span className="chip">被点过 {r.times} 回</span>
                       {r.minutes != null && <span className="chip">⏱{r.minutes}min</span>}
-                      {r.kcal != null && <span className="chip">≈{r.kcal}kcal</span>}
+                      {/* guest 的 kcal 是「每餐」值，必须标 /餐——否则访客会把它读成整道菜的热量 */}
+                      {r.kcal != null && <span className="chip">≈{r.kcal} kcal{(r.servings ?? 1) > 1 ? "/餐" : ""}</span>}
                     </div>
                     <div className="go"><span>{picked.has(r.id) ? "✓ 已点" : "点这道"}</span><span>{picked.has(r.id) ? "" : "＋"}</span></div>
                   </div>

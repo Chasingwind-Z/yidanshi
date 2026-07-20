@@ -4,6 +4,8 @@ name: 芦笋牛排
 category: 小炒
 source: https://v.douyin.com/EUzyG23PoEI/
 created: '2026-07-17'
+minutes: 25
+difficulty: 简单
 ---
 
 ## 食材

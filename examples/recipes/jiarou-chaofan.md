@@ -3,6 +3,8 @@ id: jiarou-chaofan
 name: 鸡肉蛋炒饭
 category: 饭粥
 created: '2026-07-17'
+minutes: 20
+difficulty: 简单
 ---
 
 ## 食材

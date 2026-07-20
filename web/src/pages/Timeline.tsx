@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Meal } from "../api";
+import { getToken } from "../token";
 
 function WeekReport() {
   const [r, setR] = useState<Awaited<ReturnType<typeof api.weekreport>> | null>(null);
@@ -25,10 +26,17 @@ function MealRow({ m, onChanged }: { m: Meal; onChanged: () => void }) {
   const [note, setNote] = useState(m.note);
   const [date, setDate] = useState(m.date);
 
+  const [saveErr, setSaveErr] = useState("");
   async function save() {
-    await api.updateMeal(m.id, { rating, note, date });
-    setOpen(false);
-    onChanged();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { setSaveErr("日期不能为空，格式 YYYY-MM-DD"); return; }
+    try {
+      await api.updateMeal(m.id, { rating, note, date });
+      setSaveErr("");
+      setOpen(false);
+      onChanged();
+    } catch (e) {
+      setSaveErr((e as Error).message);
+    }
   }
   async function del() {
     if (!confirm(`删除这条「${m.recipe_name}」记录？照片不会删，菜谱做过次数会减 1。`)) return;
@@ -59,6 +67,7 @@ function MealRow({ m, onChanged }: { m: Meal; onChanged: () => void }) {
           </div>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ marginTop: 8 }} />
           <textarea value={note} onChange={e => setNote(e.target.value)} style={{ marginTop: 8, minHeight: 60 }} />
+          {saveErr && <div className="err">{saveErr}</div>}
           <div className="row" style={{ marginTop: 8 }}>
             <button className="btn ghost danger" onClick={del}>删除</button>
             <button className="btn" onClick={save}>保存</button>
@@ -73,14 +82,22 @@ export default function Timeline() {
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [goal, setGoal] = useState<number | null>(null);
-  const load = () => api.meals().then(setMeals);
+  const [err, setErr] = useState("");
+  // 不 catch 的话，meals 接口一旦 5xx 就永久停在「加载中」，连报错都看不到
+  const load = () => api.meals().then(ms => { setMeals(ms); setErr(""); })
+    .catch(e => setErr((e as Error).message));
   useEffect(() => {
     load();
     fetch("/api/config").then(r => r.json())
       .then(c => setGoal(c.goal?.kcal ? Number(c.goal.kcal) : null)).catch(() => {});
   }, []);
 
-  if (meals === null) return <div className="loading">加载中</div>;
+  if (meals === null) {
+    return err
+      ? <div className="empty">食历没能读出来<div className="dimtext" style={{ margin: "8px 0 16px" }}>{err}</div>
+          <button className="btn" onClick={load}>重试</button></div>
+      : <div className="loading">加载中</div>;
+  }
 
   const days = new Map<string, Meal[]>();
   for (const m of meals) (days.get(m.date) ?? days.set(m.date, []).get(m.date)!).push(m);
@@ -107,9 +124,10 @@ export default function Timeline() {
             )}
             {todayUncounted > 0 && <span className="dimtext">　{todayUncounted} 餐没热量未计入</span>}
             {weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
+          {/* 裸 <a> 不经 fetch 包装，开了主人令牌后点开会是 401 JSON —— 带上令牌 */}
           {meals.some(m => m.date.startsWith(curMonth)) && (
-            <a href={`/api/monthcard/${curMonth}`} target="_blank" rel="noreferrer"
-              onClick={e => e.stopPropagation()}>本月食单卡</a>
+            <a href={`/api/monthcard/${curMonth}${getToken() ? `?token=${encodeURIComponent(getToken())}` : ""}`}
+              target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>本月食单卡</a>
           )}
         </div>
       )}

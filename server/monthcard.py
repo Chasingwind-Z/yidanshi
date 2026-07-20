@@ -45,8 +45,10 @@ def render(month: str) -> bytes:
     for m in sorted(storage.list_meals(), key=lambda x: x["date"]):
         first_dates.setdefault(m["recipe_id"], m["date"])
     unlocked = [rid for rid in made_ids if first_dates.get(rid, "").startswith(month)]
-    rated = [m for m in meals if m.get("rating")]
-    best = max(rated, key=lambda m: (m["rating"], m["date"])) if rated else None
+    # 只认 1-5 的整数评分：历史脏数据里若混进字符串评分，max 比较会抛 TypeError 让整张卡 500
+    rated = [m for m in meals if isinstance(m.get("rating"), int) and not isinstance(m["rating"], bool)
+             and 1 <= m["rating"] <= 5]
+    best = max(rated, key=lambda m: (m["rating"], str(m.get("date", "")))) if rated else None
 
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
@@ -71,18 +73,22 @@ def render(month: str) -> bytes:
             thumbs.append(p)
         if len(thumbs) == 9:
             break
-    cell, gap, x0, y0 = 296, 16, 80, 460
+    # 满 3 行时缩小格子：296 的格子排三行会盖住底部落款、并把「本月最佳」整行挤出画布
+    rows = max(1, (len(thumbs) + 2) // 3)
+    cell, gap, y0 = (296 if rows <= 2 else 240), 16, 460
+    x0 = (W - (3 * cell + 2 * gap)) // 2
     for i, p in enumerate(thumbs):
         t = Image.open(p).convert("RGBA").resize((cell, cell), Image.LANCZOS)
         t = _rounded(t, 24)
         img.paste(t, (x0 + (i % 3) * (cell + gap), y0 + (i // 3) * (cell + gap)), t)
 
-    rows = max(1, (len(thumbs) + 2) // 3)
     y = y0 + rows * (cell + gap) + 24
 
     # 本月最佳
     if best:
-        name = recipes.get(best["recipe_id"], {}).get("name", "")
+        # 菜谱被删时回退到记餐时的菜名快照，别渲染成「本月最佳：  ★★★★★」
+        name = (recipes.get(best["recipe_id"], {}).get("name")
+                or best.get("recipe_name") or best.get("recipe_id", ""))
         d.text((80, y), f"本月最佳：{name} {'★' * int(best['rating'])}", font=_font(40), fill=INK)
         y += 70
 
