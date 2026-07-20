@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -13,6 +14,11 @@ from datetime import date, datetime
 from pathlib import Path
 
 import yaml
+
+try:  # 中文名转拼音 slug（可读、稳定）；没装也能跑，退确定性短哈希
+    from pypinyin import lazy_pinyin
+except ImportError:  # pragma: no cover
+    lazy_pinyin = None
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -119,9 +125,19 @@ def _dump_md(r: dict) -> str:
 
 
 def slugify(name: str) -> str:
-    """中文名 → 拼音无关的稳定 slug：保留字母数字，其余转拼接；重名加序号。"""
-    ascii_part = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()).strip("-")
-    slug = ascii_part or f"r{abs(hash(name)) % 100000}"
+    """菜名 → 稳定可读 slug：中文优先转拼音，非中文原样保留；重名加序号。
+
+    旧实现直接 encode("ascii","ignore") 会把汉字整段丢掉，全中文名一律落到
+    hash 兜底（且内置 hash() 跨进程不稳定），导致大量菜名 slug 撞车。
+    """
+    name = (name or "").strip()
+    # lazy_pinyin 逐字转拼音、非中文段原样保留；没装库则用原名（英文/数字名照常可用）
+    src = " ".join(lazy_pinyin(name)) if (lazy_pinyin and name) else name
+    slug = re.sub(r"[^a-z0-9]+", "-",
+                  unicodedata.normalize("NFKD", src).encode("ascii", "ignore").decode().lower()).strip("-")
+    slug = slug[:60].strip("-")  # 控制文件名长度
+    if not slug:  # 纯符号/emoji 等无可转写字符：确定性短哈希（不用内置 hash，跨进程不稳）
+        slug = "r" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
     base, n = slug, 2
     while (RECIPES_DIR / f"{slug}.md").exists():
         slug, n = f"{base}-{n}", n + 1
