@@ -24,7 +24,7 @@ import urllib.request
 
 from . import storage
 
-CONFIG_FILE = storage.DATA / "config.json"
+CONFIG_FILE = storage.DATA / "config.json"  # 仅文件模式的物理位置；读取走 storage.read_doc
 
 # 一致性锚点：逐字不变的画风前缀（与 docs/illustration-style.md 同步维护，改前缀=换画风）
 STYLE_ANCHOR = (
@@ -43,9 +43,7 @@ STEP_SIZE = "1024x768"
 
 
 def _config() -> dict:
-    if CONFIG_FILE.exists():
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8")).get("imagegen", {})
-    return {}
+    return (storage.read_doc("config") or {}).get("imagegen", {})
 
 
 def backend_status() -> dict:

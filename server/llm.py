@@ -21,7 +21,7 @@ import urllib.request
 
 from . import storage
 
-CONFIG_FILE = storage.DATA / "config.json"
+CONFIG_FILE = storage.DATA / "config.json"  # 仅文件模式的物理位置；读写一律走 storage.read_doc/write_doc
 
 # launchd 环境 PATH 很干净，把 CLI 常见安装位置补进来
 _EXTRA = [os.path.expanduser("~/.local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
@@ -68,7 +68,7 @@ def ingredient_info(name: str) -> dict:
     elif backend == "codex-cli":
         out = _run_cli(["codex", "exec"], prompt)
     else:
-        out = _run_openai(config(), prompt)
+        out = _run_openai(_effective_config(), prompt)
     m = re.search(r"\{.*\}", out, re.S)
     if not m:
         raise RuntimeError("AI 输出里没有 JSON")
@@ -115,17 +115,35 @@ def fetch_link_text(url: str) -> str:
 
 
 def config() -> dict:
-    if CONFIG_FILE.exists():
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8")).get("llm", {})
-    return {}
+    return (storage.read_doc("config") or {}).get("llm", {})
+
+
+# 自动链兜底（云端无 claude/codex CLI 时）：有 DEEPSEEK_API_KEY 就走 openai 通道。
+# 注意 deepseek-chat 已下线，用 deepseek-v4-flash。
+_DEEPSEEK_DEFAULTS = {"backend": "openai", "base_url": "https://api.deepseek.com",
+                      "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-v4-flash"}
+
+
+def _effective_config() -> dict:
+    """生效配置：config.json 显式 backend 最优先；否则自动链
+    claude-cli → codex-cli → （设了 DEEPSEEK_API_KEY 时）openai/DeepSeek。"""
+    cfg = config()
+    if cfg.get("backend"):
+        return cfg
+    if shutil.which("claude"):
+        return {**cfg, "backend": "claude-cli"}
+    if shutil.which("codex"):
+        return {**cfg, "backend": "codex-cli"}
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        return {**_DEEPSEEK_DEFAULTS, **{k: v for k, v in cfg.items() if v}}
+    return cfg
 
 
 def backend_status() -> dict:
-    cfg = config()
-    backend = cfg.get("backend") or ("claude-cli" if shutil.which("claude")
-                                     else "codex-cli" if shutil.which("codex") else "")
-    ok = bool(backend) and (backend != "openai" or bool(os.environ.get(cfg.get("api_key_env", ""))))
-    return {"backend": backend, "model": cfg.get("model", ""), "available": ok}
+    eff = _effective_config()
+    backend = eff.get("backend", "")
+    ok = bool(backend) and (backend != "openai" or bool(os.environ.get(eff.get("api_key_env", ""))))
+    return {"backend": backend, "model": eff.get("model", ""), "available": ok}
 
 
 def _run_cli(cmd: list[str], prompt: str) -> str:
@@ -161,7 +179,7 @@ def extract_recipe(text: str, source: str = "") -> dict:
     elif backend == "codex-cli":
         out = _run_cli(["codex", "exec"], prompt)
     else:
-        out = _run_openai(config(), prompt)
+        out = _run_openai(_effective_config(), prompt)
 
     m = re.search(r"\{.*\}", out, re.S)
     if not m:

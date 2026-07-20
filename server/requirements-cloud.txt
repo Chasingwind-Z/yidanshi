@@ -1,0 +1,13 @@
+# 云托管镜像依赖：**无 rembg/onnxruntime**（抠图走阿里云 SegmentFood，见 server/segfood.py）
+# 本地开发/launchd 仍用 server/requirements.txt（含 rembg）
+fastapi==0.139.2
+uvicorn==0.51.0
+PyYAML==6.0.3
+pillow==12.3.0
+pypinyin==0.55.0
+python-multipart==0.0.32
+SQLAlchemy>=2.0,<3
+PyMySQL>=1.1
+cryptography>=42          # MySQL 8 caching_sha2_password 认证需要
+cos-python-sdk-v5>=1.9.29
+alibabacloud_imageseg20191230>=3.0.4

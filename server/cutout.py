@@ -31,6 +31,24 @@ def match_tableware(category: str) -> str:
 
 
 @lru_cache(maxsize=1)
+def _have_rembg() -> bool:
+    try:
+        import rembg  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def backend() -> str:
+    """当前可用的抠图通道：rembg（本地，现状）→ segfood（云端阿里云）→ ""（只剩圆框直裁）。"""
+    if _have_rembg():
+        return "rembg"
+    from . import segfood
+
+    return "segfood" if segfood.available() else ""
+
+
+@lru_cache(maxsize=1)
 def _session():
     from rembg import new_session
 
@@ -177,11 +195,13 @@ def is_transparent(raw: bytes) -> bool:
         return False
 
 
-def process_modes(raw: bytes, modes: list[str], circle: tuple[float, float, float] | None) -> dict[str, tuple[bytes, bytes]]:
+def process_modes(raw: bytes, modes: list[str], circle: tuple[float, float, float] | None,
+                  precut: Image.Image | None = None) -> dict[str, tuple[bytes, bytes]]:
     """按模式产出多份结果：plate=抠出食物摆插画盘（推荐），auto=AI 抠图直出，
-    circle=参考圆直接裁（不走模型的兜底）。AI 抠图只跑一次共用；失败时只要 circle 还在就静默降级。"""
+    circle=参考圆直接裁（不走模型的兜底）。AI 抠图只跑一次共用；失败时只要 circle 还在就静默降级。
+    precut：外部通道（如云端 segfood）已抠好的透明主体，传入则不再跑 rembg，摆盘合成同一套。"""
     out: dict[str, tuple[bytes, bytes]] = {}
-    ai_cut: Image.Image | None = None
+    ai_cut: Image.Image | None = precut
     for mode in modes:
         try:
             if mode == "circle":

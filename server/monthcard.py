@@ -5,7 +5,7 @@ import io
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import storage
+from . import photostore, storage
 
 W, H = 1080, 1440
 PAPER = (244, 239, 227)
@@ -65,21 +65,24 @@ def render(month: str) -> bytes:
     stats = f"记了 {len(meals)} 餐 · 做了 {len(made_ids)} 道菜 · 新解锁 {len(unlocked)} 道"
     d.text((80, 370), stats, font=_font(38), fill=RED)
 
-    # 菜卡九宫格（最多 9 张，按时间倒序）
-    thumbs = []
+    # 菜卡九宫格（最多 9 张，按时间倒序）。photo_card 是 http(s)（云端 COS）就拉字节
+    # （超时 5s，失败跳过该缩略图），否则按本地路径（现状）——photostore.fetch 统一处理
+    thumbs: list[Image.Image] = []
     for m in sorted(meals, key=lambda x: (x["date"], x["id"]), reverse=True):
-        p = storage.PHOTOS / m["photo_card"].removeprefix("/photos/") if m.get("photo_card") else None
-        if p and p.exists():
-            thumbs.append(p)
+        data = photostore.fetch(m.get("photo_card") or "")
+        if data:
+            try:
+                thumbs.append(Image.open(io.BytesIO(data)).convert("RGBA"))
+            except Exception:  # 坏图/半截下载：跳过这张，别让整张月卡 500
+                pass
         if len(thumbs) == 9:
             break
     # 满 3 行时缩小格子：296 的格子排三行会盖住底部落款、并把「本月最佳」整行挤出画布
     rows = max(1, (len(thumbs) + 2) // 3)
     cell, gap, y0 = (296 if rows <= 2 else 240), 16, 460
     x0 = (W - (3 * cell + 2 * gap)) // 2
-    for i, p in enumerate(thumbs):
-        t = Image.open(p).convert("RGBA").resize((cell, cell), Image.LANCZOS)
-        t = _rounded(t, 24)
+    for i, t in enumerate(thumbs):
+        t = _rounded(t.resize((cell, cell), Image.LANCZOS), 24)
         img.paste(t, (x0 + (i % 3) * (cell + gap), y0 + (i // 3) * (cell + gap)), t)
 
     y = y0 + rows * (cell + gap) + 24

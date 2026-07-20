@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hmac
-import json
 import math
 import os
 import random
@@ -14,7 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import cutout, imagegen, llm, nutrition, storage
+from . import cutout, imagegen, llm, nutrition, photostore, segfood, storage
 
 app = FastAPI(title="一箪食 yidanshi")
 storage.init_dirs()
@@ -39,28 +38,45 @@ _load_secrets()
 # 局域网自用默认不设防（手机打开即用）。要把服务暴露到公网（内网穿透/端口转发）时，
 # 在 data/secrets.env 里设 YIDANSHI_TOKEN=一串随机字符，即可给「主人接口」加一道口令：
 # 访客点菜链接（/api/guest/*）另有 guest token，不受影响；静态资源/封面图照常公开。
+# 云托管另有 openid 鉴权：设 YIDANSHI_OWNER_OPENID 后，callContainer 注入的
+# X-WX-OPENID 等于它 → 视同主人；不等 → 仅放行 _PUBLIC_API。两道门任一通过即主人。
 OWNER_TOKEN = os.environ.get("YIDANSHI_TOKEN", "").strip()
-_PUBLIC_API = {"/api/guest/menu", "/api/guest/order"}  # 开令牌后仍对访客开放的接口
+OWNER_OPENID = os.environ.get("YIDANSHI_OWNER_OPENID", "").strip()
+_PUBLIC_API = {"/api/guest/menu", "/api/guest/order", "/api/whoami"}  # 开令牌后仍对访客开放的接口
 
 
 @app.middleware("http")
 async def owner_gate(request: Request, call_next):
-    if OWNER_TOKEN:
+    if OWNER_TOKEN or OWNER_OPENID:
         p = request.url.path
         if p.startswith("/api/") and p not in _PUBLIC_API:
-            supplied = (request.headers.get("x-token")
-                        or request.cookies.get("yidanshi_token")
-                        or request.query_params.get("token", ""))
-            # 转 bytes 再比较：compare_digest 对含非 ASCII 的 str 会抛 TypeError → 500，转 bytes 稳（仍是定时安全比较）
-            if not hmac.compare_digest(supplied.encode("utf-8"), OWNER_TOKEN.encode("utf-8")):
+            ok = False
+            if OWNER_TOKEN:  # 原有口令逻辑原样保留
+                supplied = (request.headers.get("x-token")
+                            or request.cookies.get("yidanshi_token")
+                            or request.query_params.get("token", ""))
+                # 转 bytes 再比较：compare_digest 对含非 ASCII 的 str 会抛 TypeError → 500，转 bytes 稳（仍是定时安全比较）
+                ok = hmac.compare_digest(supplied.encode("utf-8"), OWNER_TOKEN.encode("utf-8"))
+            if not ok and OWNER_OPENID:
+                openid = request.headers.get("x-wx-openid", "")
+                ok = bool(openid) and hmac.compare_digest(openid.encode("utf-8"),
+                                                          OWNER_OPENID.encode("utf-8"))
+            if not ok:
                 return JSONResponse({"detail": "需要主人令牌"}, status_code=401)
     return await call_next(request)
+
+
+@app.get("/api/whoami")
+def whoami(request: Request):
+    """回显 callContainer 注入的 openid（任何人可调）：zzf 首次部署后用它拿自己的 openid
+    填进 YIDANSHI_OWNER_OPENID。"""
+    return {"openid": request.headers.get("x-wx-openid") or None}
 
 
 # ---------- 设置 ----------
 
 def _config_payload() -> dict:
-    cfg = json.loads(llm.CONFIG_FILE.read_text(encoding="utf-8")) if llm.CONFIG_FILE.exists() else {}
+    cfg = storage.read_doc("config") or {}
     envs = {c.get("api_key_env") for c in (cfg.get("llm", {}), cfg.get("imagegen", {})) if c.get("api_key_env")}
     return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}), "goal": cfg.get("goal", {}),
             "status": {**llm.backend_status(), "imagegen": imagegen.backend_status()},
@@ -77,7 +93,7 @@ def get_config():
 def put_config(body: dict):
     # 读现有配置为基底，只覆盖 body 里出现的段，保留 guest 等未提及的顶层字段
     # （历史 bug：整体重建会静默吞掉 guest token，作废分享链接）
-    cfg = json.loads(llm.CONFIG_FILE.read_text(encoding="utf-8")) if llm.CONFIG_FILE.exists() else {}
+    cfg = storage.read_doc("config") or {}
     for section in ("llm", "imagegen", "goal"):
         if section not in body:
             continue
@@ -86,7 +102,7 @@ def put_config(body: dict):
             cfg[section] = clean
         else:
             cfg.pop(section, None)  # 传空段 = 清除（如清空每日目标）
-    llm.CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    storage.write_doc("config", cfg)
 
     secrets = {k: v.strip() for k, v in (body.get("secrets") or {}).items() if v and v.strip()}
     if secrets:
@@ -235,11 +251,8 @@ def update_recipe(rid: str, body: dict):
     return storage.get_recipe(rid)  # 回落库后重新解析的结果，别回内存里的 merged（口径才一致）
 
 
-PANTRY_FILE = storage.DATA / "pantry.json"
-
-
 def _pantry() -> list[str]:
-    return json.loads(PANTRY_FILE.read_text(encoding="utf-8")).get("items", []) if PANTRY_FILE.exists() else []
+    return (storage.read_doc("pantry") or {}).get("items", [])
 
 
 @app.get("/api/pantry")
@@ -255,7 +268,7 @@ def put_pantry(body: dict):
         if it and it not in seen:
             seen.add(it)
             items.append(it)
-    PANTRY_FILE.write_text(json.dumps({"items": items}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    storage.write_doc("pantry", {"items": items})
     return {"items": items}
 
 
@@ -297,9 +310,6 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
     return {**random.choice(rs), "relaxed": relaxed}
 
 
-ING_DB_DIR = storage.DATA / "ingredients"
-
-
 @app.post("/api/nutrition/preview")
 def nutrition_preview(body: dict):
     """编辑器实时合计：传 ingredients 列表，返回 compute 结果（本地纯计算，零成本）。"""
@@ -338,8 +348,7 @@ def ingredient_info(name: str):
         info["source"] = nutrition.AI_SOURCE
     except Exception as e:
         raise HTTPException(502, str(e))
-    ING_DB_DIR.mkdir(parents=True, exist_ok=True)
-    (ING_DB_DIR / f"{name}.json").write_text(json.dumps(info, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    storage.write_doc(f"ingredients/{name}", info)
     return info
 
 
@@ -349,12 +358,16 @@ def ingredient_info(name: str):
 async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(False),
                     mode: str = Form("auto"), cx: float = Form(-1), cy: float = Form(-1), r: float = Form(-1)):
     """mode: plate=抠出食物摆插画盘 / auto=AI抠图直出 / circle=参考圆直裁 / both=全都出让用户选 /
-    polish=AI 图生图精修原照片；cx/cy/r 为参考圆相对坐标。"""
+    polish=AI 图生图精修原照片；cx/cy/r 为参考圆相对坐标。
+
+    抠图三级链：rembg 可用（本地）→ 现状；否则 segfood（云端阿里云）抠出主体走同样的
+    摆盘合成；都没有 → 只出 circle 模式结果，响应加 note 说明。"""
     raw = await photo.read()
     stamp = datetime.now().strftime("p%Y%m%d%H%M%S%f")
     ext = Path(photo.filename or "x.jpg").suffix or ".jpg"
-    (storage.PHOTOS / "raw" / f"{stamp}{ext}").write_bytes(raw)
+    photostore.save("raw", f"{stamp}{ext}", raw)
     circle = (cx, cy, r) if r > 0 else None
+    note = None
 
     if mode == "polish":
         src = cutout._crop_region(raw, *circle) if circle else raw
@@ -371,29 +384,48 @@ async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(Fals
         results = {"plate": (img[0], plate), "auto": img}
     else:
         modes = ["plate", "auto", "circle"] if mode == "both" else [mode]
-        results = cutout.process_modes(raw, modes, circle)
+        tier = cutout.backend()
+        seg = None
+        if tier == "segfood" and any(m in ("plate", "auto") for m in modes):
+            focused = cutout._crop_region(raw, *circle) if circle else raw
+            seg = segfood.cut(focused)  # 失败返回 None，走下面的圆框兜底
+        if tier == "rembg":
+            results = cutout.process_modes(raw, modes, circle)
+        elif seg is not None:
+            results = cutout.process_modes(raw, modes, circle, precut=seg)
+        elif any(m in ("plate", "auto") for m in modes):
+            # 云端未配抠图（或 segfood 这张没抠出来）：只出圆框直裁
+            results = cutout.process_modes(raw, ["circle"], circle) if circle else {}
+            note = "云端未配抠图，仅圆框直裁"
+        else:
+            results = cutout.process_modes(raw, modes, circle)  # 只要 circle：不需要抠图通道
 
     out = []
     for m, (cut_png, card_png) in results.items():
         pid = f"{stamp}-{m}"
-        (storage.PHOTOS / "cut" / f"{pid}.png").write_bytes(cut_png)
-        (storage.PHOTOS / "cards" / f"{pid}.png").write_bytes(card_png)
-        out.append({"mode": m, "photo_id": pid, "card": f"/photos/cards/{pid}.png"})
-    return {"results": out}
+        photostore.save("cut", f"{pid}.png", cut_png)
+        card_url = photostore.save("cards", f"{pid}.png", card_png)
+        out.append({"mode": m, "photo_id": pid, "card": card_url})
+    resp = {"results": out}
+    if note:
+        resp["note"] = note
+    return resp
 
 
 @app.post("/api/replate")
 def replate(body: dict):
     """换餐具：用已存的抠图重新合成菜卡（本地零成本）。tableware ∈ plate/bowl/saucer。"""
     pid, tw = body.get("photo_id", ""), body.get("tableware", "plate")
-    cutf = storage.PHOTOS / "cut" / f"{pid}.png"
-    if not cutf.exists():
+    data = photostore.load("cut", f"{pid}.png") if pid else None
+    if data is None:
         raise HTTPException(404, "没有这张抠图")
+    import io as _io
+
     from PIL import Image
 
-    card = cutout.make_plate_card(Image.open(cutf).convert("RGBA"), tw)
-    (storage.PHOTOS / "cards" / f"{pid}.png").write_bytes(cutout._png(card))
-    return {"card": f"/photos/cards/{pid}.png", "tableware": tw}
+    card = cutout.make_plate_card(Image.open(_io.BytesIO(data)).convert("RGBA"), tw)
+    url = photostore.save("cards", f"{pid}.png", cutout._png(card))
+    return {"card": url, "tableware": tw}
 
 
 # ---------- AI 通道 ----------
@@ -482,7 +514,7 @@ def add_meal(body: dict):
     pid = str(body.get("photo_id", "")).strip()
     if pid and not storage.valid_id(pid.lower()):
         raise HTTPException(400, "照片 id 不合法")
-    card = f"/photos/cards/{pid}.png" if pid else ""
+    card = photostore.url_for("cards", f"{pid}.png") if pid else ""  # 本地 = /photos/…（现状），COS = 完整 https
     meal = storage.add_meal({
         "recipe_id": rid,
         "date": mdate,
@@ -525,22 +557,19 @@ def delete_recipe(rid: str):
 
 # ---------- 点菜（亲友只读链接） ----------
 
-ORDERS_FILE = storage.DATA / "orders.json"
-
-
 def _orders() -> list[dict]:
-    return json.loads(ORDERS_FILE.read_text(encoding="utf-8")) if ORDERS_FILE.exists() else []
+    return storage.read_doc("orders") or []
 
 
 def _guest_token(create: bool = False, reset: bool = False) -> str:
-    cfg = json.loads(llm.CONFIG_FILE.read_text(encoding="utf-8")) if llm.CONFIG_FILE.exists() else {}
+    cfg = storage.read_doc("config") or {}
     tok = cfg.get("guest", {}).get("token", "")
     if reset or (create and not tok):
         import secrets as _secrets
 
         tok = _secrets.token_urlsafe(8)
         cfg["guest"] = {"token": tok}
-        llm.CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        storage.write_doc("config", cfg)
     return tok
 
 
@@ -582,7 +611,7 @@ def guest_order(body: dict):
                    "from": str(body.get("from", "")).strip()[:20] or "神秘食客",
                    "note": str(body.get("note", "")).strip()[:200],
                    "items": items, "date": date.today().isoformat(), "done": False})
-    ORDERS_FILE.write_text(json.dumps(orders, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    storage.write_doc("orders", orders)
     return {"ok": True}
 
 
@@ -597,19 +626,16 @@ def update_order(oid: str, body: dict):
     for o in orders:
         if o["id"] == oid:
             o["done"] = bool(body.get("done", True))
-            ORDERS_FILE.write_text(json.dumps(orders, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+            storage.write_doc("orders", orders)
             return o
     raise HTTPException(404, "没有这单")
 
 
 # ---------- 买菜清单 ----------
 
-SHOPPING_FILE = storage.DATA / "shopping.json"
-
-
 @app.get("/api/shopping")
 def get_shopping():
-    return json.loads(SHOPPING_FILE.read_text(encoding="utf-8")) if SHOPPING_FILE.exists() else {"items": []}
+    return storage.read_doc("shopping") or {"items": []}
 
 
 @app.put("/api/shopping")
@@ -635,7 +661,7 @@ def put_shopping(body: dict):
             e["checked"] = e["checked"] or bool(it.get("checked"))
     items = sorted(merged.values(), key=lambda x: x["seasoning"])
     doc = {"items": items}
-    SHOPPING_FILE.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    storage.write_doc("shopping", doc)
     return doc
 
 
@@ -733,13 +759,12 @@ def delete_meal(mid: str):
 
 @app.post("/api/seed-examples")
 def seed_examples():
-    """把 examples/recipes/ 拷进 data/recipes/（幂等），给新用户十秒看到完整形态。"""
+    """把 examples/recipes/ 灌进菜谱库（幂等），给新用户十秒看到完整形态。
+    文件模式=原样拷贝文件（字节不动，现状）；DB 模式=解析后插入。"""
     src = storage.ROOT / "examples" / "recipes"
     n = 0
-    for f in src.glob("*.md"):
-        dst = storage.RECIPES_DIR / f.name
-        if not dst.exists():
-            dst.write_bytes(f.read_bytes())
+    for f in sorted(src.glob("*.md")):
+        if storage.seed_recipe(f):
             n += 1
     return {"added": n}
 

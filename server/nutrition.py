@@ -64,18 +64,16 @@ def lookup(name: str) -> dict | None:
 
 
 def cached(name: str) -> dict | None:
-    p = USER_DIR / f"{name}.json"
-    if p.exists():
-        info = json.loads(p.read_text(encoding="utf-8"))
-        info.setdefault("source", AI_SOURCE)
-        return info
-    return None
+    info = storage.read_doc(f"ingredients/{name}")  # 文件模式=data/ingredients/<名>.json，云端=kvdocs
+    if info is None:
+        return None
+    info.setdefault("source", AI_SOURCE)
+    return info
 
 
 def all_names() -> list[str]:
     names = list(builtin().keys())
-    if USER_DIR.exists():
-        names += [p.stem for p in USER_DIR.glob("*.json") if p.stem not in builtin()]
+    names += [n for n in storage.list_doc_names("ingredients/") if n not in builtin()]
     return sorted(set(names))
 
 

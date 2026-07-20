@@ -1,0 +1,15 @@
+# 云镜像构建上下文瘦身：数据不进镜像（云上在 MySQL/COS），前端/小程序另有归属
+data/
+web/node_modules/
+web/dist/
+miniapp/
+miniprogram/
+.git/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.DS_Store
+PROGRESS.md
+PROGRESS.archive.md
+docs/
