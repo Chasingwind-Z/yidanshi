@@ -28,6 +28,11 @@ function fuzzyGrams(amount?: string): number | null {
   return Math.round(n * (/小勺|茶匙/.test(m[2]) ? 5 : 15));
 }
 
+/** 「少许/适量」这类天然不可量化的词：就算 AI 硬估了克重，也只当粗估看，不摆出精确数字 */
+function isVagueAmount(amount?: string): boolean {
+  return !!amount && /少许|适量|些许|酌量|随意|适度|少量|一点|微量|若干/.test(amount);
+}
+
 /** 食材小百科：点食材弹出，AI 生成一次全食单缓存复用 */
 function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number; onClose: () => void }) {
   const [info, setInfo] = useState<IngInfo | null>(null);
@@ -45,6 +50,8 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
   const eff = grams ?? est;
   const f = eff != null ? eff / 100 : null;
   const scaled = (v: number | null) => (v == null || f == null ? null : Math.round(v * f * 10) / 10);
+  // 有克重、但用量词本身是「少许」这类模糊量：折算照做，但按粗估呈现（≈ + 提示），别装精确
+  const rough = grams != null && isVagueAmount(amount);
 
   return (
     <div className="sheetscrim" onClick={onClose}>
@@ -54,7 +61,7 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
           <div>
             <b>{name}</b>
             {(amount || grams) && (
-              <div className="dimtext">本菜用量：{amount}{grams ? `（${grams}g）` : ""}</div>
+              <div className="dimtext">本菜用量：{amount}{grams ? `（${rough ? "约 " : ""}${grams}g${rough ? "，粗估" : ""}）` : ""}</div>
             )}
           </div>
           <button className="more" onClick={onClose} aria-label="关闭">✕</button>
@@ -75,7 +82,7 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
                   <span className="iv">{info.carb_g != null ? `${info.carb_g}g` : "—"}</span>
                   {f != null && (
                     <>
-                      <span className="il ac">本菜{grams ? ` ${grams}g` : ` ≈${est}g`}</span>
+                      <span className="il ac">本菜{grams ? (rough ? ` ≈${grams}g` : ` ${grams}g`) : ` ≈${est}g`}</span>
                       <span className="iv ac">{grams != null ? (itemKcal ?? Math.round(info.kcal_per_100g * f)) : Math.round(info.kcal_per_100g * f)}</span>
                       <span className="iv ac">{info.protein_g != null ? `${scaled(info.protein_g)}g` : "—"}</span>
                       <span className="iv ac">{info.fat_g != null ? `${scaled(info.fat_g)}g` : "—"}</span>
@@ -83,7 +90,8 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
                     </>
                   )}
                 </div>
-                {grams != null && <p className="ingsheet-note">本菜行已按 {grams}g 折算；改克重后按比例自动更新</p>}
+                {grams != null && !rough && <p className="ingsheet-note">本菜行已按 {grams}g 折算；改克重后按比例自动更新</p>}
+                {rough && <p className="ingsheet-note">「{amount}」难精确，此处按 ≈{grams}g 粗估，仅作参考</p>}
                 {grams == null && est != null && <p className="ingsheet-note">教程未标克重，「{amount}」按 ≈{est}g 粗估折算，仅供参考</p>}
                 {grams == null && est == null && amount && <p className="ingsheet-note">教程用量「{amount}」没标克重，无法折算——上表为每100g 标准参考</p>}
               </>
