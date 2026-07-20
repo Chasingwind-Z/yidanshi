@@ -76,6 +76,13 @@ data/
 
 来自微信小程序「我的Taste」（by 抖音博主 AB）——它展示的是作者自己的菜谱，而一箪食让每个人都能拥有自己的版本。微信小程序版移植评估见 [docs/miniprogram-eval.md](docs/miniprogram-eval.md)。
 
+## 微信小程序部署
+
+除了自托管 Web，一箪食也能上微信小程序：后端跑在微信云托管（同一份 `server/`，菜谱/记录入 MySQL、照片入 COS、AI 走 DeepSeek、抠图走阿里云 SegmentFood），本地 Web 完全不受影响。
+
+- 一键自检云凭证：`python3 scripts/cloud_preflight.py`（只读探测，不打印任何密钥）
+- 完整实操手册：[docs/deploy.md](docs/deploy.md)
+
 ## License
 
 [MIT](LICENSE)
