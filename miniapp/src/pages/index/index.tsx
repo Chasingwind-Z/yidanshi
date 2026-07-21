@@ -91,25 +91,10 @@ export default function Index() {
           <View className="h1">我的食单</View>
         </View>
         <View className="headacts">
-          {recipes.length > 0 && (
-            <View className="act" hoverClass="btn-hover" onClick={() => setFan(f => !f)}>🎴</View>
-          )}
           <View className="act" hoverClass="btn-hover"
             onClick={() => Taro.navigateTo({ url: "/pages/settings/index" })}>⚙</View>
         </View>
       </View>
-
-      {fan && (
-        <View className="papercard boxline fanpanel">
-          {toggles.map(t => (
-            <View key={t.label} className="fanrow" onClick={() => t.set(!t.on)}>
-              <View className={`checkbox ${t.on ? "on" : ""}`}>{t.on ? "✓" : ""}</View>
-              <Text>{t.label}</Text>
-            </View>
-          ))}
-          <View className="btn" hoverClass="btn-hover" onClick={flip}>翻牌子！</View>
-        </View>
-      )}
 
       {recipes.length === 0 ? (
         <View className="empty">
@@ -129,6 +114,22 @@ export default function Index() {
               <Input className="ipt" placeholderClass="ph" value={q}
                 onInput={e => setQ(e.detail.value)} placeholder="找菜：菜名 / 食材 / 分类" />
               {kw !== "" && <View className="clear" onClick={() => setQ("")}>✕</View>}
+            </View>
+          )}
+          <View className={`fanpill ${fan ? "on" : ""}`} hoverClass="btn-hover" onClick={() => setFan(f => !f)}>
+            <Text className="fanpill-ico">🎴</Text>
+            <Text className="fanpill-txt">翻牌子 · 今天吃什么</Text>
+            <Text className="fanpill-caret">{fan ? "▲" : "▼"}</Text>
+          </View>
+          {fan && (
+            <View className="papercard boxline fanpanel">
+              {toggles.map(t => (
+                <View key={t.label} className="fanrow" onClick={() => t.set(!t.on)}>
+                  <View className={`checkbox ${t.on ? "on" : ""}`}>{t.on ? "✓" : ""}</View>
+                  <Text>{t.label}</Text>
+                </View>
+              ))}
+              <View className="btn" hoverClass="btn-hover" onClick={flip}>翻牌子！</View>
             </View>
           )}
           <View className="menu">

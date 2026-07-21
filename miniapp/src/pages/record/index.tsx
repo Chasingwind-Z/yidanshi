@@ -2,8 +2,8 @@
 // 选择、AI 精修、换餐具。云端 /api/cutout 返回圆框直裁或 SegmentFood 抠图，取第一个结果。
 // 保留：最近做过 chips、新菜、日期 今天/昨天、五星、备注、实测量回填（菜谱越做越精确））
 import { useState } from "react";
-import Taro, { useDidShow, useRouter } from "@tarojs/taro";
-import { Image, Input, Picker, Text, Textarea, View } from "@tarojs/components";
+import Taro, { useDidShow, useDidHide, useRouter } from "@tarojs/taro";
+import { Image, Input, Picker, ScrollView, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, uploadCutout, type CutoutResult, type Meal, type Recipe } from "../../api";
 import { Loading, Stars } from "../../components/common";
 import "./index.scss";
@@ -39,6 +39,14 @@ export default function Record() {
   const [saving, setSaving] = useState(false);
   const [backfill, setBackfill] = useState<BackfillState | null>(null);
 
+  // 选菜器（替代原 Picker 长列表滑动）：弹层开关 / 弹层内搜索词 / 新菜输入态 / 封面坏图记录
+  const [recipesLoaded, setRecipesLoaded] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQ, setPickerQ] = useState("");
+  const [newMode, setNewMode] = useState(false);
+  const [coverErr, setCoverErr] = useState<Record<string, boolean>>({});
+  const failCover = (rid: string) => setCoverErr(m => (m[rid] ? m : { ...m, [rid]: true }));
+
   useDidShow(() => {
     // 详情页「做完了？记一餐」经 switchTab 过来带不了参数，走 storage 预选
     const preset = (Taro.getStorageSync("record_preset") as string) || router.params.id || "";
@@ -50,7 +58,8 @@ export default function Record() {
       setRecipes(recipes);
       setCats(categories);
       setNewCat(c => c || categories[0] || "");
-    }).catch(toastErr);
+      setRecipesLoaded(true);
+    }).catch(e => { toastErr(e); setRecipesLoaded(true); });
     api.meals().then((ms: Meal[]) => {
       const seen = new Set<string>();
       const rec: { id: string; name: string }[] = [];
@@ -63,6 +72,34 @@ export default function Record() {
       setRecent(rec);
     }).catch(() => {});
   });
+
+  // 离开本页时若弹层还开着，兜底把原生 tabBar 还原出来（选菜器为遮住 tabBar 会 hideTabBar）
+  useDidHide(() => {
+    if (pickerOpen) {
+      setPickerOpen(false);
+      Taro.showTabBar({ animation: false }).catch(() => {});
+    }
+  });
+
+  function openPicker() {
+    setPickerQ("");
+    setPickerOpen(true);
+    Taro.hideTabBar({ animation: false }).catch(() => {});
+  }
+  function closePicker() {
+    setPickerOpen(false);
+    Taro.showTabBar({ animation: false }).catch(() => {});
+  }
+  function selectRecipe(id: string) {
+    setRecipeId(id);
+    setNewMode(false);
+    closePicker();
+  }
+  function startNewDish() {
+    setRecipeId("");
+    setNewMode(true);
+    closePicker();
+  }
 
   async function pickImagePath(): Promise<string | null> {
     try {
@@ -106,6 +143,7 @@ export default function Record() {
     setNote("");
     setErr("");
     setBackfill(null);
+    setNewMode(false);
   }
 
   function done() {
@@ -214,8 +252,10 @@ export default function Record() {
   }
 
   const curRecipe = recipes.find(r => r.id === recipeId);
-  const pickerRange = ["＋ 新菜（在下面起名）", ...recipes.map(r => r.name)];
-  const pickerIdx = curRecipe ? recipes.indexOf(curRecipe) + 1 : 0;
+  const pickerKw = pickerQ.trim();
+  const pickerList = pickerKw
+    ? recipes.filter(r => r.name.includes(pickerKw) || r.category.includes(pickerKw) || r.ingredients.some(i => i.name.includes(pickerKw)))
+    : recipes;
 
   return (
     <View className="page">
@@ -246,39 +286,49 @@ export default function Record() {
       {err !== "" && <View className="err">{err}</View>}
 
       <View className="f">这是哪道菜</View>
-      {recent.length > 0 && (
-        <View className="chips recentchips">
-          {recent.map(r => (
-            <View key={r.id} className={`chip pick ${recipeId === r.id ? "on" : ""}`}
-              onClick={() => setRecipeId(id => (id === r.id ? "" : r.id))}>{r.name}</View>
-          ))}
-        </View>
-      )}
-      <Picker mode="selector" range={pickerRange} value={pickerIdx}
-        onChange={e => {
-          const idx = Number(e.detail.value);
-          setRecipeId(idx === 0 ? "" : recipes[idx - 1].id);
-        }}>
-        <View className="selectbox">
-          <Text>{curRecipe ? curRecipe.name : "＋ 新菜（在下面起名）"}</Text>
-          <Text className="caret">▾</Text>
-        </View>
-      </Picker>
-      {!recipeId && (
-        <View className="row newrow">
-          <View className="grow">
-            <Input className="ipt" placeholderClass="ph" placeholder="新菜名，如：云吞面" value={newName}
-              onInput={e => setNewName(e.detail.value)} />
+      {newMode ? (
+        <View className="newpick">
+          <View className="row newrow">
+            <View className="grow">
+              <Input className="ipt" placeholderClass="ph" placeholder="新菜名，如：云吞面" value={newName}
+                onInput={e => setNewName(e.detail.value)} />
+            </View>
+            <View className="catcol">
+              <Picker mode="selector" range={cats} value={Math.max(0, cats.indexOf(newCat))}
+                onChange={e => setNewCat(cats[Number(e.detail.value)] ?? newCat)}>
+                <View className="selectbox">
+                  <Text>{newCat || "分类"}</Text>
+                  <Text className="caret">▾</Text>
+                </View>
+              </Picker>
+            </View>
           </View>
-          <View className="catcol">
-            <Picker mode="selector" range={cats} value={Math.max(0, cats.indexOf(newCat))}
-              onChange={e => setNewCat(cats[Number(e.detail.value)] ?? newCat)}>
-              <View className="selectbox">
-                <Text>{newCat || "分类"}</Text>
-                <Text className="caret">▾</Text>
+          <View className="switchpick" onClick={openPicker}>‹ 从已有食单里选</View>
+        </View>
+      ) : (
+        <View className="dishpick" hoverClass="btn-hover" onClick={openPicker}>
+          {curRecipe ? (
+            <>
+              <View className={`dp-thumb ${curRecipe.cover && !coverErr[curRecipe.id] ? "" : "noimg"}`}>
+                {curRecipe.cover && !coverErr[curRecipe.id]
+                  ? <Image className="dp-img" src={absUrl(curRecipe.cover)} mode="aspectFill" onError={() => failCover(curRecipe.id)} />
+                  : <Text className="dp-rice">🍚</Text>}
               </View>
-            </Picker>
-          </View>
+              <View className="dp-body">
+                <Text className="dp-name">{curRecipe.name}</Text>
+                <Text className="dp-meta">
+                  {curRecipe.category}
+                  {curRecipe.kcal_effective != null ? ` · ≈${curRecipe.kcal_effective} kcal${(curRecipe.servings ?? 1) > 1 ? "/餐" : ""}` : ""}
+                </Text>
+              </View>
+              <Text className="dp-action">重选</Text>
+            </>
+          ) : (
+            <>
+              <Text className="dp-placeholder">选一道菜</Text>
+              <Text className="caret">▾</Text>
+            </>
+          )}
         </View>
       )}
 
@@ -308,6 +358,68 @@ export default function Record() {
           {saving ? "保存中…" : "记下这一餐"}
         </View>
       </View>
+
+      {pickerOpen && (
+        <View className="pickerscrim" catchMove onClick={closePicker}>
+          <View className="pickersheet" onClick={e => e.stopPropagation()}>
+            <View className="pickerhead">
+              <View className="pickertitle">
+                <Text className="pt-h">选一道菜</Text>
+                <View className="pickerclose" onClick={closePicker}>✕</View>
+              </View>
+              <View className="pickersearch">
+                <Input className="ipt" placeholderClass="ph" value={pickerQ}
+                  onInput={e => setPickerQ(e.detail.value)} placeholder="搜索：菜名 / 食材 / 分类" />
+                {pickerQ !== "" && <View className="pickersearch-clear" onClick={() => setPickerQ("")}>✕</View>}
+              </View>
+              {pickerKw === "" && recent.length > 0 && (
+                <View className="pickerrecent">
+                  <Text className="pickerrecent-label">最近做过</Text>
+                  <View className="chips">
+                    {recent.map(r => (
+                      <View key={r.id} className="chip pick" hoverClass="btn-hover"
+                        onClick={() => selectRecipe(r.id)}>{r.name}</View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+            <ScrollView scrollY className="pickerlist" style={{ maxHeight: "50vh" }}>
+              {!recipesLoaded ? (
+                <Loading text="读取食单" />
+              ) : pickerList.length === 0 ? (
+                <View className="empty">
+                  <View className="empty-ico">🍚</View>
+                  <Text>{pickerKw ? `没有和「${pickerKw}」相关的菜` : "食单还空着，记一道新菜吧"}</Text>
+                </View>
+              ) : (
+                pickerList.map(r => (
+                  <View className="pickeritem" key={r.id} hoverClass="btn-hover" onClick={() => selectRecipe(r.id)}>
+                    <View className={`dp-thumb ${r.cover && !coverErr[r.id] ? "" : "noimg"}`}>
+                      {r.cover && !coverErr[r.id]
+                        ? <Image className="dp-img" src={absUrl(r.cover)} mode="aspectFill" lazyLoad onError={() => failCover(r.id)} />
+                        : <Text className="dp-rice">🍚</Text>}
+                    </View>
+                    <View className="pi-body">
+                      <Text className="pi-name">{r.name}</Text>
+                      <View className="pi-meta">
+                        <Text className="pi-cat">{r.category}</Text>
+                        {r.kcal_effective != null && (
+                          <Text className="pi-kcal">≈{r.kcal_effective} kcal{(r.servings ?? 1) > 1 ? "/餐" : ""}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <Text className="pi-go">›</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            <View className="pickerfoot">
+              <View className="btn ghost" hoverClass="btn-hover" onClick={startNewDish}>＋ 记一道新菜</View>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

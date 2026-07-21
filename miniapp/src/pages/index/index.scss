@@ -29,6 +29,38 @@
   border-color: var(--accent);
 }
 
+/* 翻牌子入口：朱砂描边 pill（描边=可点/强调，正文不喧宾夺主） */
+.fanpill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: transparent;
+  box-sizing: border-box;
+}
+.fanpill.on {
+  background: rgba(176, 57, 43, 0.06);
+}
+.fanpill-ico {
+  font-size: 18px;
+}
+.fanpill-txt {
+  flex: 1;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.fanpill-caret {
+  color: var(--accent);
+  font-size: 11px;
+}
+
 .searchbar {
   position: relative;
   margin-bottom: 12px;
@@ -145,7 +177,7 @@
   display: flex;
   justify-content: space-between;
   border: 1px solid var(--line-box);
-  color: #6d6252;
+  color: var(--dim);
   padding: 9px 12px;
   border-radius: 6px;
   font-size: 14px;
