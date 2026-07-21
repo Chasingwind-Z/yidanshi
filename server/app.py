@@ -614,7 +614,12 @@ def guest_order(body: dict):
     if not isinstance(raw, list):
         raise HTTPException(400, "点单格式不对")
     names = {r["id"]: r["name"] for r in storage.list_recipes()}
-    items = [{"recipe_id": rid, "name": names[rid]} for rid in raw if isinstance(rid, str) and rid in names]
+    items = []
+    for it in raw:  # 兼容两种格式：旧=菜 id 字符串；新={id, note}（每道菜可备注：少放辣…）
+        rid, note = (it, "") if isinstance(it, str) else (str(it.get("id", "")), str(it.get("note", ""))) \
+            if isinstance(it, dict) else ("", "")
+        if rid in names:
+            items.append({"recipe_id": rid, "name": names[rid], "note": note.strip()[:60]})
     if not items:
         raise HTTPException(400, "先点至少一道菜")
     orders = _orders()

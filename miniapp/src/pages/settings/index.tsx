@@ -2,23 +2,18 @@
 // 点菜链接生成+复制。砍掉：AI 通道/生图配置编辑、访问口令说明、备份区、数据说明——
 // 这些属于服务器运维，留在 Web 端）
 import { useEffect, useState } from "react";
-import Taro from "@tarojs/taro";
-import { Input, Text, View } from "@tarojs/components";
+import Taro, { useShareAppMessage } from "@tarojs/taro";
+import { Button, Input, Text, View } from "@tarojs/components";
 import { api, toastErr, type AiStatus, type ConfigPayload } from "../../api";
 import { Loading } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
 
-function GuestLinkSection() {
-  const [token, setToken] = useState("");
+const isWeapp = process.env.TARO_ENV === "weapp";
 
-  const webBase = process.env.TARO_ENV === "weapp" ? CLOUDRUN_HTTP_BASE : LOCAL_BASE;
+function GuestLinkSection({ token, remake }: { token: string; remake: (reset: boolean) => void }) {
+  const webBase = isWeapp ? CLOUDRUN_HTTP_BASE : LOCAL_BASE;
   const link = token ? (webBase ? `${webBase}/#/guest/${token}` : token) : "";
-
-  function make(reset = false) {
-    api.guestLink(reset).then(d => setToken(d.token)).catch(toastErr);
-  }
-  useEffect(() => { make(); }, []);
 
   function copy() {
     if (!link) return;
@@ -28,25 +23,32 @@ function GuestLinkSection() {
 
   async function reset() {
     const { confirm } = await Taro.showModal({
-      title: "重置点菜链接",
-      content: "重置后旧链接立即失效，确定？",
+      title: "重置点菜卡片",
+      content: "重置后，之前发出的点菜卡片和链接都会失效，确定？",
       confirmText: "重置",
       cancelText: "再想想",
     });
-    if (confirm) make(true);
+    if (confirm) remake(true);
   }
 
   return (
     <>
       <View className="hint nomt">
-        发给家人朋友，对方打开就是你的只读食单，能点菜不能改。点单会出现在你的食单页顶部。
-        {!webBase && "（提示：src/config.ts 里配了云托管公网域名后，这里会生成完整网页链接）"}
+        把点菜卡片发给家里人或来做客的朋友，对方点开就能选想吃的菜、留讲究（少放辣…），
+        不能动你的菜谱。有人点了菜，食单页顶上会亮出来。
       </View>
+      {isWeapp && (
+        <Button className={`btn sharebtn ${token ? "" : "disabled"}`} openType="share" hoverClass="btn-hover">
+          发点菜卡片给家里人 ✉
+        </Button>
+      )}
       <View className="linkbox">{link || "生成中…"}</View>
       <View className="row acts-sm">
-        <View className="btn ghost" hoverClass="btn-hover" onClick={copy}>复制链接</View>
-        <View className="btn ghost danger" hoverClass="btn-hover" onClick={reset}>重置链接</View>
+        <View className="btn ghost" hoverClass="btn-hover" onClick={copy}>复制网页链接</View>
+        <View className="btn ghost danger" hoverClass="btn-hover" onClick={reset}>重置</View>
       </View>
+      <View className="btn ghost inboxbtn" hoverClass="btn-hover"
+        onClick={() => Taro.navigateTo({ url: "/pages/inbox/index" })}>收到的点菜 ›</View>
     </>
   );
 }
@@ -56,6 +58,16 @@ export default function Settings() {
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [goalKcal, setGoalKcal] = useState("");
   const [saving, setSaving] = useState(false);
+  const [token, setToken] = useState("");
+
+  const makeToken = (reset: boolean) =>
+    api.guestLink(reset).then(d => setToken(d.token)).catch(toastErr);
+
+  // 「发点菜卡片」转发：卡片直达点菜页并带上口令
+  useShareAppMessage(() => ({
+    title: "来我家点菜呀 🍚",
+    path: `/pages/order/index?t=${token}`,
+  }));
 
   useEffect(() => {
     api.config().then(c => {
@@ -63,6 +75,7 @@ export default function Settings() {
       setGoalKcal(c.goal?.kcal ? String(c.goal.kcal) : "");
     }).catch(toastErr);
     api.aiStatus().then(setStatus).catch(() => {});
+    makeToken(false);
   }, []);
 
   if (!cfg) return <View className="page"><Loading /></View>;
@@ -110,8 +123,8 @@ export default function Settings() {
           onClick={() => { if (!saving) save(); }}>{saving ? "保存中…" : "保存设置"}</View>
       </View>
 
-      <View className="h2">点菜链接</View>
-      <GuestLinkSection />
+      <View className="h2">家人点菜</View>
+      <GuestLinkSection token={token} remake={r => makeToken(r)} />
     </View>
   );
 }

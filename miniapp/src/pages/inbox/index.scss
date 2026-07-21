@@ -1,0 +1,56 @@
+/* 收到的点菜：纸卡列表；每道菜的讲究用朱批（朱砂楷体小字） */
+.ocard {
+  margin-bottom: 14px;
+}
+.ocard.isdone {
+  opacity: 0.55;
+}
+.o-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.o-from {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 17px;
+}
+.o-date {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+}
+.o-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.o-item {
+  font-size: 15.5px;
+  line-height: 1.6;
+}
+.o-zhupi {
+  color: var(--accent);
+  font-family: var(--serif);
+  font-size: 13.5px;
+  margin-left: 6px;
+}
+.o-note {
+  color: var(--dim);
+  font-size: 13px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-hair);
+}
+.o-donebtn {
+  margin-top: 12px;
+}
+.alldone {
+  text-align: center;
+  padding: 10px 0 4px;
+}
+.donehead {
+  margin-top: 24px;
+  color: var(--dim);
+}

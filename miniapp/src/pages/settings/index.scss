@@ -25,3 +25,16 @@
 .nomt {
   margin-top: 0;
 }
+
+/* 家人点菜：转发按钮是原生 Button，抹掉默认边框/行高，套回朱砂胶囊 */
+.sharebtn {
+  margin-top: 12px;
+  border: none;
+  line-height: inherit;
+}
+.sharebtn::after {
+  border: none;
+}
+.inboxbtn {
+  margin-top: 10px;
+}

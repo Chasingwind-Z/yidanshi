@@ -21,6 +21,8 @@ export default function Index() {
   // 云端封面 URL 可能 404（迁移后 COS 对象不在）：记下坏图，回退到空盘占位，别显示裂图
   const [coverErr, setCoverErr] = useState<Record<string, boolean>>({});
   const failCover = (rid: string) => setCoverErr(m => (m[rid] ? m : { ...m, [rid]: true }));
+  // 家里点菜的待做菜数：主人才拉得到 /api/orders，客人 401 → 保持 0，首页零痕迹
+  const [wishCount, setWishCount] = useState(0);
   const [avoid7, setAvoid7] = useState(() => readFlag("fan_avoid7", true));
   const [quick30, setQuick30] = useState(() => readFlag("fan_quick30", false));
   const [easy, setEasy] = useState(() => readFlag("fan_easy", false));
@@ -61,7 +63,12 @@ export default function Index() {
       toastErr(e);
     });
   }
-  useDidShow(() => { load(); });
+  useDidShow(() => {
+    load();
+    api.orders()
+      .then(os => setWishCount(os.filter(o => !o.done).reduce((n, o) => n + o.items.length, 0)))
+      .catch(() => setWishCount(0));
+  });
 
   if (recipes === null) {
     return (
@@ -114,6 +121,13 @@ export default function Index() {
               <Input className="ipt" placeholderClass="ph" value={q}
                 onInput={e => setQ(e.detail.value)} placeholder="找菜：菜名 / 食材 / 分类" />
               {kw !== "" && <View className="clear" onClick={() => setQ("")}>✕</View>}
+            </View>
+          )}
+          {wishCount > 0 && (
+            <View className="orderbar" hoverClass="btn-hover"
+              onClick={() => Taro.navigateTo({ url: "/pages/inbox/index" })}>
+              <Text className="orderbar-txt">📮 家里点了 {wishCount} 道菜想吃</Text>
+              <Text className="orderbar-go">›</Text>
             </View>
           )}
           <View className={`fanpill ${fan ? "on" : ""}`} hoverClass="btn-hover" onClick={() => setFan(f => !f)}>

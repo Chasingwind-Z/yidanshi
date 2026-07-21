@@ -30,6 +30,31 @@
 }
 
 /* 翻牌子入口：朱砂描边 pill（描边=可点/强调，正文不喧宾夺主） */
+/* 家里点菜横幅：只在有待做单时出现（实心朱砂，比翻牌胶囊更响——这是新消息） */
+.orderbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 6px 18px rgba(176, 57, 43, 0.25);
+  box-sizing: border-box;
+}
+.orderbar-txt {
+  flex: 1;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.orderbar-go {
+  font-size: 17px;
+}
+
 .fanpill {
   display: flex;
   align-items: center;

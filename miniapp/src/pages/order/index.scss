@@ -1,0 +1,226 @@
+/* 点菜页（客人视角）：宣纸底 + 朱砂只给「想吃/传旨」动作 */
+.orderpage {
+  padding-bottom: 96px; /* 给底部固定传旨栏让位 */
+}
+.nomt {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.searchbar {
+  position: relative;
+  margin-bottom: 12px;
+}
+.searchbar .ipt {
+  padding-right: 40px;
+}
+.searchbar .clear {
+  position: absolute;
+  right: 4px;
+  top: 0;
+  height: 46px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+/* 分类：客人页用横排 chips（首页的竖排侧栏留给主人自己） */
+.cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.catbtn {
+  padding: 0 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--line-hair);
+  color: var(--dim);
+  font-size: 14px;
+  font-family: var(--serif);
+}
+.catbtn.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* 菜卡列表 */
+.gdishes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gdish {
+  background: var(--card);
+  border: 1px solid var(--line-hair);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.gdish.on {
+  border-color: var(--accent);
+}
+.gd-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  min-height: 64px;
+  box-sizing: border-box;
+}
+.gd-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--card2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gd-img {
+  width: 100%;
+  height: 100%;
+}
+.gd-thumb.noimg .gd-rice {
+  font-size: 24px;
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+.gd-body {
+  flex: 1;
+  min-width: 0;
+}
+.gd-name {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.4;
+}
+.gd-meta {
+  color: var(--dim);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+.gd-mark {
+  flex-shrink: 0;
+  min-width: 56px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-box);
+  color: var(--dim);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.gd-mark.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 15px;
+}
+.gd-noterow {
+  padding: 0 12px 12px;
+}
+.gd-note {
+  height: 42px;
+  font-size: 14px;
+  background: var(--bg);
+}
+
+/* 捎话卡 */
+.sendcard {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+.ordernote {
+  min-height: 64px;
+}
+
+/* 底部固定传旨栏 */
+.sendbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--line-hair);
+  box-sizing: border-box;
+  z-index: 20;
+}
+.fromipt {
+  flex: 1;
+  min-width: 0;
+}
+.sendbtn {
+  flex: 1.4;
+  padding: 0 12px;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 传旨成功态 */
+.sentmask {
+  position: fixed;
+  inset: 0;
+  background: rgba(47, 42, 34, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  padding: 32px;
+}
+.sentcard {
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  padding: 28px 20px 20px;
+  margin-bottom: 0;
+  animation: sent-pop 0.35s ease-out;
+}
+@keyframes sent-pop {
+  from {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.sentseal {
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+  border-radius: 8px;
+}
+.sent-title {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 20px;
+  margin: 12px 0 6px;
+}
+.sent-names {
+  color: var(--ink);
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.sent-again {
+  margin-top: 16px;
+}

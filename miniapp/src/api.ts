@@ -18,7 +18,12 @@ export interface Recipe {
 }
 export interface Order {
   id: string; from: string; note: string; date: string; done: boolean;
-  items: { recipe_id: string; name: string }[];
+  items: { recipe_id: string; name: string; note?: string }[];
+}
+/** 客人视角的菜（/api/guest/menu 的裁剪字段；kcal 已是每餐口径） */
+export interface GuestDish {
+  id: string; name: string; category: string; cover: string;
+  minutes?: number | null; servings?: number; times: number; rating: number | null; kcal?: number | null;
 }
 export interface ShopItem { name: string; amounts: string; recipes: string; checked: boolean; seasoning: boolean }
 export interface Meal {
@@ -224,6 +229,10 @@ export const api = {
   deleteMeal: (id: string) => request<{ ok: boolean }>(`/api/meals/${id}`, "DELETE"),
   seedExamples: () => request<{ added: number }>("/api/seed-examples", "POST"),
   guestLink: (reset = false) => request<{ token: string }>(`/api/guest-link${reset ? "?reset=true" : ""}`, "POST"),
+  guestMenu: (t: string) =>
+    request<{ categories: string[]; recipes: GuestDish[] }>(`/api/guest/menu?t=${encodeURIComponent(t)}`),
+  guestOrder: (t: string, from: string, note: string, items: { id: string; note: string }[]) =>
+    request<{ ok: boolean }>("/api/guest/order", "POST", { t, from, note, items }),
   orders: () => request<Order[]>("/api/orders"),
   orderDone: (id: string, done = true) => request<Order>(`/api/orders/${id}`, "PUT", { done }),
   shopping: () => request<{ items: ShopItem[] }>("/api/shopping"),

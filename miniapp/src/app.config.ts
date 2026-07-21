@@ -6,6 +6,8 @@ export default defineAppConfig({
     'pages/timeline/index',
     'pages/recipe/index',
     'pages/settings/index',
+    'pages/order/index',
+    'pages/inbox/index',
   ],
   window: {
     backgroundColor: '#f4efe3',
