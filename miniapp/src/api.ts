@@ -201,6 +201,7 @@ export const api = {
   recipe: (id: string) => request<Recipe>(`/api/recipes/${id}`),
   saveRecipe: (r: Partial<Recipe>) =>
     request<Recipe>(r.id ? `/api/recipes/${r.id}` : "/api/recipes", r.id ? "PUT" : "POST", r),
+  deleteRecipe: (id: string) => request<{ ok: boolean }>(`/api/recipes/${id}`, "DELETE"),
   random: (category?: string, opts?: { avoidDays?: number; maxMinutes?: number; difficulty?: string; usePantry?: boolean }) =>
     request<Recipe>(`/api/random${qs({
       category,

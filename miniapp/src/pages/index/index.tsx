@@ -18,6 +18,9 @@ export default function Index() {
   const [fan, setFan] = useState(false);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
+  // 云端封面 URL 可能 404（迁移后 COS 对象不在）：记下坏图，回退到空盘占位，别显示裂图
+  const [coverErr, setCoverErr] = useState<Record<string, boolean>>({});
+  const failCover = (rid: string) => setCoverErr(m => (m[rid] ? m : { ...m, [rid]: true }));
   const [avoid7, setAvoid7] = useState(() => readFlag("fan_avoid7", true));
   const [quick30, setQuick30] = useState(() => readFlag("fan_quick30", false));
   const [easy, setEasy] = useState(() => readFlag("fan_easy", false));
@@ -141,9 +144,9 @@ export default function Index() {
               {shown.map(r => (
                 <View className="dish" key={r.id} hoverClass="btn-hover"
                   onClick={() => Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(r.id)}` })}>
-                  {r.cover ? (
+                  {r.cover && !coverErr[r.id] ? (
                     <View className="coverwrap">
-                      <Image className="cover" src={absUrl(r.cover)} mode="aspectFill" lazyLoad />
+                      <Image className="cover" src={absUrl(r.cover)} mode="aspectFill" lazyLoad onError={() => failCover(r.id)} />
                     </View>
                   ) : (
                     <View className="coverwrap noimg">

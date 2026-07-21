@@ -173,10 +173,30 @@ def _dump_md(r: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _cos_base() -> str | None:
+    """COS 四要素齐→ https://bucket.cos.region.myqcloud.com，否则 None。
+    直接读环境变量、不 import photostore（那会循环 import）。"""
+    b, rg = os.environ.get("COS_BUCKET", "").strip(), os.environ.get("COS_REGION", "").strip()
+    if b and rg and os.environ.get("COS_SECRET_ID", "").strip() and os.environ.get("COS_SECRET_KEY", "").strip():
+        return f"https://{b}.cos.{rg}.myqcloud.com"
+    return None
+
+
 def _attach_illust(r: dict, rid: str) -> dict:
     """插画目录约定：食材图标在全局共享库 illust/ingredients/<食材名>.png（旧的按菜谱
-    ing-<n>.png 兼容），步骤图按菜谱 illust/<rid>/step-<n>.png。插画始终按本地文件探测
-    （云端不生成插画 → 全空串，前端自然不显示）。"""
+    ing-<n>.png 兼容），步骤图按菜谱 illust/<rid>/step-<n>.png。
+    - 本地：按文件探测（现状不变），没有的返回空串、前端自然不显示。
+    - 云端（配了 COS）：无法廉价探测对象存在性，一律构造 COS URL，交给前端对 404 的插画
+      做 onError 回退（食材回退 emoji、步骤图隐藏）。共享食材图标因此能跨菜谱复用。"""
+    cos = _cos_base()
+    if cos:
+        r["illust"] = {
+            "ingredients": [f"{cos}/photos/illust/ingredients/{i['name']}.png" for i in r["ingredients"]],
+            "steps": [f"{cos}/photos/illust/{rid}/step-{n}.png"
+                      for n in range(1, len(r["steps"]) + 1)],
+        }
+        return r
+
     illust = PHOTOS / "illust" / rid
 
     def ing_url(n: int) -> str:

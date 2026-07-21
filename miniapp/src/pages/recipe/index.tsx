@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
 import { Image, Text, View } from "@tarojs/components";
-import { api, absUrl, type IngInfo, type Recipe } from "../../api";
+import { api, absUrl, toastErr, type IngInfo, type Recipe } from "../../api";
 import { Loading } from "../../components/common";
 import "./index.scss";
 
@@ -38,9 +38,11 @@ interface SheetArgs { name: string; amount?: string; iconUrl?: string; itemKcal?
 function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: SheetArgs & { onClose: () => void }) {
   const [info, setInfo] = useState<IngInfo | null>(null);
   const [err, setErr] = useState("");
+  const [iconErr, setIconErr] = useState(false);
   useEffect(() => {
     setInfo(null);
     setErr("");
+    setIconErr(false);
     api.ingredient(name).then(setInfo).catch(e => setErr((e as Error).message));
   }, [name]);
 
@@ -56,7 +58,9 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: Sh
       <View className="ingsheet" onClick={e => e.stopPropagation()}>
         <View className="ingsheet-head">
           <View className="icon">
-            {iconUrl ? <Image src={absUrl(iconUrl)} mode="aspectFill" className="iconimg" /> : <Text>{icon(name)}</Text>}
+            {iconUrl && !iconErr
+              ? <Image src={absUrl(iconUrl)} mode="aspectFill" className="iconimg" onError={() => setIconErr(true)} />
+              : <Text>{icon(name)}</Text>}
           </View>
           <View className="titlebox">
             <View className="iname">{name}</View>
@@ -129,6 +133,10 @@ export default function RecipePage() {
   const [r, setR] = useState<Recipe | null>(null);
   const [missing404, setMissing404] = useState(false);
   const [ingSheet, setIngSheet] = useState<SheetArgs | null>(null);
+  // 云端迁移后，illust / 封面 URL 可能指向不存在的 COS 对象（只有 demo 菜生成过插画）：
+  // 记下哪些图 404，当作「没插画」处理，别显示裂图
+  const [imgErr, setImgErr] = useState<Record<string, boolean>>({});
+  const failImg = (k: string) => setImgErr(m => (m[k] ? m : { ...m, [k]: true }));
 
   useEffect(() => {
     api.recipe(id).then(setR).catch(() => setMissing404(true));
@@ -138,6 +146,23 @@ export default function RecipePage() {
     // record 是 tabBar 页，switchTab 带不了参数——预选菜谱走 storage
     Taro.setStorageSync("record_preset", id);
     Taro.switchTab({ url: "/pages/record/index" });
+  }
+
+  async function delRecipe() {
+    if (!r) return;
+    const { confirm } = await Taro.showModal({
+      title: "删除菜谱",
+      content: `删除「${r.name}」？食历里的记录会保留，靠菜名快照继续可读。`,
+      confirmText: "删除",
+      cancelText: "再想想",
+    });
+    if (!confirm) return;
+    try {
+      await api.deleteRecipe(id);
+      Taro.navigateBack();
+    } catch (e) {
+      toastErr(e);
+    }
   }
 
   if (missing404) {
@@ -159,9 +184,9 @@ export default function RecipePage() {
   const hasTutorial = r.ingredients.length > 0 || r.steps.length > 0;
   return (
     <View className="page">
-      {r.cover !== "" && (
+      {r.cover !== "" && !imgErr.cover && (
         <View className="hero">
-          <Image src={absUrl(r.cover)} mode="widthFix" className="heroimg" />
+          <Image src={absUrl(r.cover)} mode="widthFix" className="heroimg" onError={() => failImg("cover")} />
         </View>
       )}
       <View className="rtitle">{r.name}</View>
@@ -191,19 +216,23 @@ export default function RecipePage() {
           <View className="tgrid">
             <View className="tcol tcol-ing">
               <View className="th4">食材准备</View>
-              {r.ingredients.map((ing, i) => (
-                <View className="ing" key={i} hoverClass="btn-hover" onClick={() =>
-                  setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: r.illust?.ingredients[i] || undefined,
-                    itemKcal: r.nutrition?.per_item?.[i] ?? undefined, grams: ing.grams ?? undefined })}>
-                  <View className="icon">
-                    {r.illust?.ingredients[i]
-                      ? <Image src={absUrl(r.illust.ingredients[i])} mode="aspectFill" className="iconimg" />
-                      : <Text>{icon(ing.name)}</Text>}
+              {r.ingredients.map((ing, i) => {
+                // illust 存在且没 404 才当有插画：404 的走 emoji 兜底，也不把坏 URL 传进小百科
+                const ingIllust = r.illust?.ingredients[i] && !imgErr[`ing${i}`] ? r.illust.ingredients[i] : undefined;
+                return (
+                  <View className="ing" key={i} hoverClass="btn-hover" onClick={() =>
+                    setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: ingIllust,
+                      itemKcal: r.nutrition?.per_item?.[i] ?? undefined, grams: ing.grams ?? undefined })}>
+                    <View className="icon">
+                      {ingIllust
+                        ? <Image src={absUrl(ingIllust)} mode="aspectFill" className="iconimg" onError={() => failImg(`ing${i}`)} />
+                        : <Text>{icon(ing.name)}</Text>}
+                    </View>
+                    <View className="n">{ing.name}</View>
+                    {ing.amount !== "" && <View className="a">{ing.amount}</View>}
                   </View>
-                  <View className="n">{ing.name}</View>
-                  {ing.amount !== "" && <View className="a">{ing.amount}</View>}
-                </View>
-              ))}
+                );
+              })}
               <View className="dimtext tap-hint">点食材看小百科</View>
             </View>
             <View className="tcol tcol-steps">
@@ -213,7 +242,8 @@ export default function RecipePage() {
                   <View className="num">{i + 1}</View>
                   <View className="stepbody">
                     <View className="steptext">{s}</View>
-                    {r.illust?.steps[i] && <Image src={absUrl(r.illust.steps[i])} mode="widthFix" className="stepimg" />}
+                    {r.illust?.steps[i] && !imgErr[`step${i}`] &&
+                      <Image src={absUrl(r.illust.steps[i])} mode="widthFix" className="stepimg" onError={() => failImg(`step${i}`)} />}
                   </View>
                 </View>
               ))}
@@ -253,6 +283,7 @@ export default function RecipePage() {
       )}
       <View className="record-cta">
         <View className="btn" hoverClass="btn-hover" onClick={goRecord}>做完了？记一餐</View>
+        <View className="btn ghost danger" hoverClass="btn-hover" onClick={delRecipe}>删除这道菜</View>
       </View>
       {ingSheet && <IngredientSheet {...ingSheet} onClose={() => setIngSheet(null)} />}
     </View>

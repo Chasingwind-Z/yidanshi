@@ -201,6 +201,9 @@
 }
 .record-cta {
   margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .backhome {
   margin-top: 16px;
