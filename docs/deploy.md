@@ -40,6 +40,7 @@
 | `COS_BUCKET` | COS 桶名，形如 `yidanshi-1300000000`（**含 appid 后缀**） | 建桶后在 COS 控制台看 |
 | `COS_REGION` | COS 桶所在地域，形如 `ap-shanghai` | 建桶时选的地域 |
 | `YIDANSHI_OWNER_OPENID` | 主人认证：只有 openid 等于它的人才是主人（**第 6 步拿到后再填**） | 部署后调 `/api/whoami` 得到 |
+| `SERVERCHAN_SENDKEY` | 可选。填了之后有人点菜，你微信「服务通知」即时弹提醒（Server酱免费版每天 5 条，家用够） | <https://sct.ftqq.com> 微信扫码 → 关注「方糖」公众号 → 复制 SendKey（`SCT` 开头） |
 
 **平台自动注入、你不用管的：**
 

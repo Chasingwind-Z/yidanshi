@@ -568,6 +568,31 @@ def delete_recipe(rid: str):
 
 # ---------- 点菜（亲友只读链接） ----------
 
+def _notify_owner(order: dict) -> None:
+    """有人点菜 → 给主人微信推一条（Server酱 sctapi）。没配 SERVERCHAN_SENDKEY 就静默不做；
+    在后台线程发、失败也静默——提醒是锦上添花，绝不能挡点单落库或拖慢响应。"""
+    key = os.environ.get("SERVERCHAN_SENDKEY", "").strip()
+    if not key:
+        return
+    items = "、".join(f"{i['name']}（{i['note']}）" if i.get("note") else i["name"] for i in order["items"])
+    title = f"{order['from']} 点了 {len(order['items'])} 道菜"
+    desp = f"想吃：{items}"
+    if order.get("note"):
+        desp += f"\n\n捎话：{order['note']}"
+
+    def _send() -> None:
+        import urllib.parse
+        import urllib.request
+        try:
+            body = urllib.parse.urlencode({"title": title, "desp": desp}).encode()
+            urllib.request.urlopen(f"https://sctapi.ftqq.com/{key}.send", data=body, timeout=8)
+        except Exception:  # noqa: BLE001
+            pass
+
+    import threading
+    threading.Thread(target=_send, daemon=True).start()
+
+
 def _orders() -> list[dict]:
     return storage.read_doc("orders") or []
 
@@ -628,6 +653,7 @@ def guest_order(body: dict):
                    "note": str(body.get("note", "")).strip()[:200],
                    "items": items, "date": date.today().isoformat(), "done": False})
     storage.write_doc("orders", orders)
+    _notify_owner(orders[-1])
     return {"ok": True}
 
 
