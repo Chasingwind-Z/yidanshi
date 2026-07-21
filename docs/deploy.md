@@ -93,6 +93,10 @@ python3 scripts/cloud_preflight.py
 
 ### 3.2 建 COS 桶并开公有读
 
+> ⚠️ **别用微信云托管里那个「对象存储」托管桶**——它归云托管托管账号，你自己的腾讯云
+> 主/子密钥都够不着（403 AccessDenied）。必须按下面在**腾讯云 COS 控制台**建一个**你自己账号名下**的独立桶，
+> 密钥用**主账号 API 密钥**（子账号即使授了 COSFullAccess 也够不着托管桶）。
+
 1. 打开 [COS 控制台](https://console.cloud.tencent.com/cos) → 创建存储桶。
 2. 桶名随意（会自动带 appid 后缀，如 `yidanshi-1300000000`），地域建议和云托管同区（如 `ap-shanghai`）。
 3. **访问权限：设为「公有读私有写」**。照片链接要能被小程序直接 `downloadFile` 拉取，
