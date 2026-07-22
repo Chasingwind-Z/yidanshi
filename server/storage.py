@@ -728,6 +728,24 @@ def delete_meal(mid: str) -> bool:
     return _store.delete_meal(mid)
 
 
+def health() -> dict:
+    """存储自诊断（只给主人看，走 /api/config）：当前模式 + 数据库连通性与错误原文。
+    文件模式恒 ok；DB 模式做一次 SELECT 1，失败把异常带回来（云上运行日志不便看时用）。"""
+    if isinstance(_store, _FileStore):
+        return {"mode": "file", "ok": True}
+    try:
+        _store._ensure()
+        with _store._engine.connect() as c:
+            c.execute(_store.sa.text("SELECT 1"))
+        return {"mode": "db", "ok": True}
+    except Exception as e:  # noqa: BLE001
+        msg = f"{type(e).__name__}: {str(e)[:300]}"
+        pw = os.environ.get("MYSQL_PASSWORD", "")
+        if pw:
+            msg = msg.replace(pw, "***")  # 异常文本里若带连接串，别把密码回显出去
+        return {"mode": "db", "ok": False, "error": msg}
+
+
 def read_doc(name: str):
     """读杂项文档（orders/shopping/pantry/config/ingredients/<名>）；不存在返回 None。
     文件模式 = 原来的 data/*.json（路径与格式不变），DB 模式 = kvdocs 表。"""

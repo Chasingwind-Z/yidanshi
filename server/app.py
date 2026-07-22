@@ -92,6 +92,7 @@ def _config_payload() -> dict:
     return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}), "goal": cfg.get("goal", {}),
             "status": {**llm.backend_status(), "imagegen": imagegen.backend_status()},
             "owner_token": bool(OWNER_TOKEN),
+            "storage": storage.health(),  # 云上排障：存储模式 + 数据库连通性（主人可见）
             "secrets": {e: bool(os.environ.get(e)) for e in envs}}
 
 
