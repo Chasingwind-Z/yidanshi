@@ -87,14 +87,19 @@ def whoami(request: Request):
 # ---------- 设置 ----------
 
 def _config_payload() -> dict:
-    # 存储挂了也要能开口——否则 DB 一断 /api/config 先 500，自诊断字段反而看不到
+    # 存储挂了也要能开口——否则 DB 一断 /api/config 先 500，自诊断字段反而看不到。
+    # 每个碰数据库的调用都单独兜住（backend_status 内部也读 config，同样会因 DB 断而抛）。
     try:
         cfg = storage.read_doc("config") or {}
     except Exception:  # noqa: BLE001
         cfg = {}
+    try:
+        status = {**llm.backend_status(), "imagegen": imagegen.backend_status()}
+    except Exception:  # noqa: BLE001
+        status = {}
     envs = {c.get("api_key_env") for c in (cfg.get("llm", {}), cfg.get("imagegen", {})) if c.get("api_key_env")}
     return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}), "goal": cfg.get("goal", {}),
-            "status": {**llm.backend_status(), "imagegen": imagegen.backend_status()},
+            "status": status,
             "owner_token": bool(OWNER_TOKEN),
             "storage": storage.health(),  # 云上排障：存储模式 + 数据库连通性（主人可见）
             "secrets": {e: bool(os.environ.get(e)) for e in envs}}
