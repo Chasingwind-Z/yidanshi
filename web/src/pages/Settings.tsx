@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getToken } from "../token";
 
 type Cfg = Record<string, any>;
 interface ConfigPayload {
@@ -38,6 +39,27 @@ function BackupSection() {
       </div>
       <div style={{ marginTop: 8 }}>
         <button className="btn ghost" disabled={busy} onClick={run}>{busy ? "备份中…" : "立即备份"}</button>
+      </div>
+    </>
+  );
+}
+
+function MenuPosterSection() {
+  // 新标签页直开图片接口；设了主人令牌就带 query token（owner_gate 支持 ?token=）
+  const open = (style: string) => {
+    const t = getToken();
+    window.open(`/api/menuposter?style=${style}${t ? `&token=${encodeURIComponent(t)}` : ""}`, "_blank");
+  };
+  return (
+    <>
+      <div className="hint" style={{ marginTop: 0 }}>
+        把整本食单排成一张纸上长图——题签、分帖、菜照、档案戳、候膳、落款，存下来就能晒。
+        按「给谁看」选一种题签：
+      </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="btn ghost" onClick={() => open("family")}>家宴食单</button>
+        <button className="btn ghost" onClick={() => open("couple")}>二人小灶</button>
+        <button className="btn ghost" onClick={() => open("solo")}>一人食帖</button>
       </div>
     </>
   );
@@ -198,6 +220,9 @@ export default function Settings() {
           ? <>已开启 ✓ 主人接口都要口令。手机换设备时用魔法链接 <code>http://电脑IP:18100/#/?token=你的令牌</code> 打开一次即可（令牌存本地、自动从地址栏抹掉；用 <code>#/</code> 形式令牌不会进服务器日志）。</>
           : <>当前<b>未设口令</b>——同一 Wi-Fi 局域网自用没问题。若要把服务开到公网（内网穿透 / 端口转发），先在 <code>data/secrets.env</code> 里加一行 <code>YIDANSHI_TOKEN=一串随机字符</code> 并重启，之后主人接口就要口令了；访客点菜链接不受影响。</>}
       </div>
+
+      <h1 style={{ fontSize: 18, marginTop: 28 }}>纸上食单</h1>
+      <MenuPosterSection />
 
       <h1 style={{ fontSize: 18, marginTop: 28 }}>点菜链接</h1>
       <GuestLinkSection />

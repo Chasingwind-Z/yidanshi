@@ -38,6 +38,7 @@ export default function Record() {
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [backfill, setBackfill] = useState<BackfillState | null>(null);
+  const [celebrate, setCelebrate] = useState(false);  // 保存成功后的盖章微动效（~1.2s 自动散场）
 
   // 选菜器（替代原 Picker 长列表滑动）：弹层开关 / 弹层内搜索词 / 新菜输入态 / 封面坏图记录
   const [recipesLoaded, setRecipesLoaded] = useState(false);
@@ -166,6 +167,12 @@ export default function Record() {
         photo_id: picked?.photo_id,
         date, rating, note,
       });
+      // 盖章庆祝：保存一成功就落印（纯 CSS 动画），期间下面的回填检查照常进行不被阻塞
+      const CELEBRATE_MS = 1250;
+      const stamped = Date.now();
+      setCelebrate(true);
+      const afterStamp = (fn?: () => void) =>
+        setTimeout(() => { setCelebrate(false); fn?.(); }, Math.max(0, CELEBRATE_MS - (Date.now() - stamped)));
       // 实测量回填：这道菜若有「适量」类模糊量，轻提示补一笔（可一键跳过），菜谱越做越精确
       try {
         const rec = await api.recipe(meal.recipe_id);
@@ -175,10 +182,11 @@ export default function Record() {
         const askServings = (rec.servings ?? 1) === 1 && (rec.kcal_whole ?? 0) > 1200;
         if (fuzzy.length > 0 || askServings) {
           setBackfill({ recipe: rec, items: fuzzy, askServings, servings: null });
+          afterStamp();  // 印章散场后露出底下的回填页
           return;
         }
       } catch { /* 回填是锦上添花，失败不挡路 */ }
-      done();
+      afterStamp(done);  // 章落定再走原有的重置/跳转
     } catch (e) {
       toastErr(e);
       setErr((e as Error).message);
@@ -212,9 +220,18 @@ export default function Record() {
     done();
   }
 
+  // 盖章庆祝浮层：全屏但只活 ~1.2s，动画期间顺手挡住重复点击（不是流程阻塞）
+  const celebrateOverlay = celebrate ? (
+    <View className="celebrate" catchMove>
+      <View className="celebrate-seal">记</View>
+      <Text className="celebrate-txt">已记入食历</Text>
+    </View>
+  ) : null;
+
   if (backfill) {
     return (
       <View className="page">
+        {celebrateOverlay}
         <Text className="seal">记</Text>
         <View className="h1">记好了！顺手补一笔？</View>
         {backfill.items.length > 0 && (
@@ -259,6 +276,7 @@ export default function Record() {
 
   return (
     <View className="page">
+      {celebrateOverlay}
       <Text className="seal">记</Text>
       <View className="h1">记一餐</View>
 

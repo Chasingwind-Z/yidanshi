@@ -790,6 +790,20 @@ def month_card(month: str):
     return Response(png, media_type="image/png")
 
 
+@app.get("/api/menuposter")
+def menu_poster(style: str = "family", page: int = 1):
+    """纸上食单长图：整本食单 → 一张可保存可晒的竖长图（style 选题签：家宴/二人/一人食）。
+    ≤18 道一张整图；更多则每页 12 道，page 翻页，总页数见响应头 X-Total-Pages。"""
+    from . import menuposter
+    from fastapi.responses import Response
+
+    try:
+        png, pages = menuposter.render(style, page)
+    except (ValueError, LookupError) as e:
+        raise HTTPException(404, str(e))
+    return Response(png, media_type="image/png", headers={"X-Total-Pages": str(pages)})
+
+
 @app.put("/api/meals/{mid}")
 def update_meal(mid: str, body: dict):
     # 与 POST 用同一套校验：改记录曾是无校验直写入口，清空日期就能把非法值落库，
