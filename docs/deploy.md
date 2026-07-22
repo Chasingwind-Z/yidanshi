@@ -237,12 +237,27 @@ git archive -o ~/Desktop/yidanshi-deploy.zip HEAD
 
 ## 9. 更新 / 回滚
 
-**改了后端代码，重新上线：**
+**推荐 · GitHub 持续部署（2026-07-22 起）**：云托管绑定本仓库的 **`release` 分支**，
+push 即自动构建部署，不再手传 zip。
+
+- 一次性绑定（控制台）：服务 `yidanshi` → 发布新版本 → 部署方式选**「代码库拉取」**→
+  授权 GitHub（装 App，勾选本仓库）→ 仓库 `Chasingwind-Z/yidanshi`、分支 **`release`**、
+  Dockerfile 路径 `Dockerfile`、构建目录 `/` → 若有「代码变更自动重新部署」开关则打开 → 发布。
+  **首次发布时核对环境变量 12 项还在**（尤其 MYSQL_* 三件——历史上丢过一次）。
+- 日常上线（本地一条命令，无控制台操作）：
+
+```bash
+cd ~/Code/yidanshi && git push origin main:release
+```
+
+- 为什么盯 `release` 不盯 `main`：main 上会有文档/半成品提交，盯 release 才能自主控制
+  「哪个状态上云」。要上云时把 main 推进 release 即可。
+
+**兜底 · 手动 zip（旧法，绑定失败时用）：**
 
 ```bash
 cd ~/Code/yidanshi
-git commit -am "……"                              # 先提交
-git archive -o ~/Desktop/yidanshi-deploy.zip HEAD  # 重新打包
+git archive -o ~/Desktop/yidanshi-deploy.zip HEAD
 # 云托管控制台 → yidanshi 服务 → 新建版本 → 上传新 zip → 部署
 ```
 
