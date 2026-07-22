@@ -15,6 +15,18 @@
     </array>
     <key>WorkingDirectory</key>
     <string>__ROOT__</string>
+    <!-- launchd 不继承 shell 环境：Mac 走 Clash 代理，不注入的话 claude-cli 连不上
+         Anthropic → 每日荐 AI 路径永远回退规则版。Clash 没开时出网失败也只是回退，不炸。
+         国内端点（DeepSeek/方舟）走 Clash 规则直连，不受影响。 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HTTP_PROXY</key>
+        <string>http://127.0.0.1:7897</string>
+        <key>HTTPS_PROXY</key>
+        <string>http://127.0.0.1:7897</string>
+        <key>NO_PROXY</key>
+        <string>localhost,127.0.0.1,::1,.local</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
