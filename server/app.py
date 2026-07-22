@@ -87,7 +87,11 @@ def whoami(request: Request):
 # ---------- 设置 ----------
 
 def _config_payload() -> dict:
-    cfg = storage.read_doc("config") or {}
+    # 存储挂了也要能开口——否则 DB 一断 /api/config 先 500，自诊断字段反而看不到
+    try:
+        cfg = storage.read_doc("config") or {}
+    except Exception:  # noqa: BLE001
+        cfg = {}
     envs = {c.get("api_key_env") for c in (cfg.get("llm", {}), cfg.get("imagegen", {})) if c.get("api_key_env")}
     return {"llm": cfg.get("llm", {}), "imagegen": cfg.get("imagegen", {}), "goal": cfg.get("goal", {}),
             "status": {**llm.backend_status(), "imagegen": imagegen.backend_status()},
