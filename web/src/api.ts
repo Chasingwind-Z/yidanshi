@@ -13,6 +13,8 @@ export interface Order {
   id: string; from: string; note: string; date: string; done: boolean;
   items: { recipe_id: string; name: string }[];
 }
+/** 每日荐（规则版，主人接口）：0-2 条；请求失败/空数组 → 整条不渲染 */
+export interface Suggestion { recipe_id: string; name: string; reason: string }
 export interface ShopItem { name: string; amounts: string; recipes: string; checked: boolean; seasoning: boolean }
 export interface Meal {
   id: string; recipe_id: string; recipe_name: string; date: string;
@@ -49,6 +51,7 @@ export const api = {
     if (opts?.usePantry) q.set("use_pantry", "1");
     return j<Recipe>(fetch(`/api/random?${q}`));
   },
+  suggest: () => j<{ suggestions: Suggestion[]; date: string }>(fetch("/api/suggest")),
   ingredientNames: () => j<{ names: string[]; defaults: Record<string, number> }>(fetch("/api/ingredient-names")),
   pantry: () => j<{ items: string[] }>(fetch("/api/pantry")),
   savePantry: (items: string[]) => j<{ items: string[] }>(fetch("/api/pantry", {

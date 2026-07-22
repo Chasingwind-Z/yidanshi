@@ -86,6 +86,46 @@
   font-size: 11px;
 }
 
+/* 今日荐：安静的一条建议（规则版每日荐），不弹窗不打扰。
+   朱砂纪律：只有可点的菜名和朱批理由用朱砂，小标走 dim 楷体 */
+.sugcard {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+.sug-t {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--dim);
+  letter-spacing: 2px;
+  flex-shrink: 0;
+  padding-top: 3px;
+}
+.sug-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sug-item {
+  line-height: 1.6;
+}
+.sug-name {
+  color: var(--accent);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 15px;
+  margin-right: 8px;
+}
+.sug-reason {
+  color: var(--accent);
+  font-family: var(--serif);
+  font-size: 13px;
+  opacity: 0.85;
+}
+
 .searchbar {
   position: relative;
   margin-bottom: 12px;

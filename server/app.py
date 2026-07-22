@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import cutout, imagegen, llm, nutrition, photostore, segfood, storage
+from . import cutout, imagegen, llm, nutrition, photostore, segfood, storage, suggest
 
 app = FastAPI(title="一箪食 yidanshi")
 storage.init_dirs()
@@ -329,6 +329,13 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
         else:
             relaxed = True
     return {**random.choice(rs), "relaxed": relaxed}
+
+
+@app.get("/api/suggest")
+def daily_suggest():
+    """每日荐：规则版（零成本零延迟），从自己的食单里挑今天适合做的 1-2 道。
+    规则与权重见 server/suggest.py；主人接口（客人 401，前端静默不渲染）。"""
+    return suggest.daily()
 
 
 @app.post("/api/nutrition/preview")

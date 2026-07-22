@@ -84,6 +84,19 @@ h1 { font-size: 24px; line-height: 1.3; letter-spacing: 0.06em; margin: 8px 0 20
 .fanpanel label { display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .fanpanel input[type="checkbox"] { width: auto; accent-color: var(--accent); }
 
+/* 今日荐：安静的一条建议（规则版每日荐），不弹窗不打扰。
+   朱砂纪律：只有可点的菜名和朱批理由用朱砂，小标走 dim 楷体 */
+.sugcard {
+  display: flex; gap: 12px; background: var(--card); border: 1px solid var(--line-hair);
+  border-radius: 14px; padding: 10px 14px; margin-bottom: 16px;
+}
+.sugcard .sug-t { font-family: var(--serif); font-size: 13px; color: var(--dim); letter-spacing: 2px; flex-shrink: 0; padding-top: 3px; }
+.sugcard .sug-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sugcard .sug-item { line-height: 1.6; }
+.sugcard .sug-name { color: var(--accent); font-family: var(--serif); font-weight: 700; font-size: 15px; margin-right: 8px; }
+.sugcard .sug-name:hover { text-decoration: underline; }
+.sugcard .sug-reason { color: var(--accent); font-family: var(--serif); font-size: 13px; opacity: 0.85; }
+
 /* 食历周条 */
 .weekstrip {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;

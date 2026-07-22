@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Taro, { useDidShow } from "@tarojs/taro";
 import { Image, Input, Text, View } from "@tarojs/components";
-import { api, absUrl, toastErr, type Recipe } from "../../api";
+import { api, absUrl, toastErr, type Recipe, type Suggestion } from "../../api";
 import { ErrRetry, Loading } from "../../components/common";
 import "./index.scss";
 
@@ -23,6 +23,8 @@ export default function Index() {
   const failCover = (rid: string) => setCoverErr(m => (m[rid] ? m : { ...m, [rid]: true }));
   // 家里点菜的待做菜数：主人才拉得到 /api/orders，客人 401 → 保持 0，首页零痕迹
   const [wishCount, setWishCount] = useState(0);
+  // 今日荐（规则版）：失败/空数组/客人 401 → 保持 []，整条不渲染，零痕迹
+  const [sug, setSug] = useState<Suggestion[]>([]);
   const [avoid7, setAvoid7] = useState(() => readFlag("fan_avoid7", true));
   const [quick30, setQuick30] = useState(() => readFlag("fan_quick30", false));
   const [easy, setEasy] = useState(() => readFlag("fan_easy", false));
@@ -68,6 +70,7 @@ export default function Index() {
     api.orders()
       .then(os => setWishCount(os.filter(o => !o.done).reduce((n, o) => n + o.items.length, 0)))
       .catch(() => setWishCount(0));
+    api.suggest().then(s => setSug(s.suggestions)).catch(() => setSug([]));
   });
 
   if (recipes === null) {
@@ -144,6 +147,22 @@ export default function Index() {
                 </View>
               ))}
               <View className="btn" hoverClass="btn-hover" onClick={flip}>翻牌子！</View>
+            </View>
+          )}
+          {sug.length > 0 && (
+            <View className="papercard sugcard">
+              <Text className="sug-t">今日荐</Text>
+              <View className="sug-list">
+                {sug.map(s => (
+                  <View className="sug-item" key={s.recipe_id}>
+                    <Text className="sug-name" onClick={() =>
+                      Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(s.recipe_id)}` })}>
+                      {s.name}
+                    </Text>
+                    <Text className="sug-reason">{s.reason}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           )}
           <View className="menu">

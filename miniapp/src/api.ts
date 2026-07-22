@@ -20,6 +20,8 @@ export interface Order {
   id: string; from: string; note: string; date: string; done: boolean;
   items: { recipe_id: string; name: string; note?: string }[];
 }
+/** 每日荐（规则版，主人接口）：0-2 条；客人 401 → 页面整体不渲染 */
+export interface Suggestion { recipe_id: string; name: string; reason: string }
 /** 客人视角的菜（/api/guest/menu 的裁剪字段；kcal 已是每餐口径） */
 export interface GuestDish {
   id: string; name: string; category: string; cover: string;
@@ -215,6 +217,7 @@ export const api = {
       difficulty: opts?.difficulty || undefined,
       use_pantry: opts?.usePantry ? 1 : undefined,
     })}`),
+  suggest: () => request<{ suggestions: Suggestion[]; date: string }>("/api/suggest"),
   ingredient: (name: string) => request<IngInfo>(`/api/ingredient/${encodeURIComponent(name)}`),
   ingredientNames: () => request<{ names: string[]; defaults: Record<string, number> }>("/api/ingredient-names"),
   pantry: () => request<{ items: string[] }>("/api/pantry"),

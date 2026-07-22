@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Order, type Recipe } from "../api";
+import { api, type Order, type Recipe, type Suggestion } from "../api";
 import { mergeShopping } from "../shop";
 
 export default function Menu() {
@@ -8,6 +8,8 @@ export default function Menu() {
   const [cat, setCat] = useState("");
   const [fan, setFan] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  // 今日荐（规则版）：失败/空数组 → 保持 []，整条不渲染，零痕迹
+  const [sug, setSug] = useState<Suggestion[]>([]);
   const [q, setQ] = useState("");
   const [shopped, setShopped] = useState<Set<string>>(new Set());
   const [err, setErr] = useState("");
@@ -44,6 +46,7 @@ export default function Menu() {
   useEffect(() => {
     load();
     api.orders().then(os => setOrders(os.filter(o => !o.done))).catch(() => {});
+    api.suggest().then(s => setSug(s.suggestions)).catch(() => {});
   }, []);
 
   async function orderToShopping(o: Order) {
@@ -103,6 +106,19 @@ export default function Menu() {
           <label><input type="checkbox" checked={easy} onChange={e => setEasy(e.target.checked)} />只要简单省事的</label>
           <label><input type="checkbox" checked={pantryFirst} onChange={e => setPantryFirst(e.target.checked)} />优先用冰箱里的食材</label>
           <button className="btn" onClick={flip}>翻牌子！</button>
+        </div>
+      )}
+      {sug.length > 0 && (
+        <div className="sugcard">
+          <span className="sug-t">今日荐</span>
+          <div className="sug-list">
+            {sug.map(s => (
+              <div className="sug-item" key={s.recipe_id}>
+                <a className="sug-name" href={`#/recipe/${s.recipe_id}`}>{s.name}</a>
+                <span className="sug-reason">{s.reason}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {recipes.length === 0 ? (
