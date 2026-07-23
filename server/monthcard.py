@@ -24,7 +24,15 @@ def _font(size: int, index: int = 0):
             return ImageFont.truetype(path, size, index=index)
         except OSError:
             continue
-    return ImageFont.load_default(size)  # 非 mac/无中文字体时兜底（字形较糙但可用）
+    # 兜底：全盘扫任意 CJK 字体——发行版的字体文件名/路径不齐（真机豆腐块事故的保险丝）
+    import glob as _glob
+    for path in sorted(_glob.glob("/usr/share/fonts/**/*CJK*.tt[cf]", recursive=True)
+                       + _glob.glob("/usr/share/fonts/**/*cjk*.tt[cf]", recursive=True)):
+        try:
+            return ImageFont.truetype(path, size, index=index)
+        except OSError:
+            continue
+    return ImageFont.load_default(size)  # 真没有字体时的最后兜底（中文会是豆腐块）
 
 
 def _rounded(im: Image.Image, radius: int) -> Image.Image:
