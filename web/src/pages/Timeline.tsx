@@ -5,17 +5,37 @@ import { getToken } from "../token";
 function WeekReport() {
   const [r, setR] = useState<Awaited<ReturnType<typeof api.weekreport>> | null>(null);
   useEffect(() => { api.weekreport().then(setR).catch(() => {}); }, []);
-  if (!r || r.meals === 0) return null;
+  if (!r) return null;
+  // 空周不摆一排 0，只留服务端给的那一句
+  if (r.empty) return <div className="weekreport"><p>{r.line}</p></div>;
   return (
     <div className="weekreport">
-      {r.kcal_avg != null && <p>平均每餐 <b>≈{r.kcal_avg}</b> kcal <span className="dimtext">（{r.meals - (r.uncounted ?? 0)} 餐合计 ≈{r.kcal}{r.uncounted ? `，另 ${r.uncounted} 餐无热量未计入` : ""}）</span></p>}
-      {r.kcal_avg == null && (r.uncounted ?? 0) > 0 && <p className="dimtext">本周 {r.uncounted} 餐都没热量，无法给出均值</p>}
-      <p>蛋白质出现在 <b>{r.protein_meals}/{r.meals}</b> 餐 · 蔬菜 <b>{r.veg_kinds.length}</b> 种
-        {r.veg_kinds.length > 0 && <span className="dimtext">（{r.veg_kinds.slice(0, 6).join("、")}{r.veg_kinds.length > 6 ? "…" : ""}）</span>}
+      <p>开火 <b>{r.meals}</b> 次 · <b>{r.days}</b> 天
+        {r.delta_meals != null && (
+          <span className="dimtext">（{r.delta_meals === 0 ? "和上周持平" : `比上周${r.delta_meals > 0 ? "+" : ""}${r.delta_meals}`}）</span>
+        )}
       </p>
-      <p className="dimtext">{Object.entries(r.categories).map(([c, n]) => `${c}×${n}`).join(" · ")}</p>
+      {r.new_dishes.length > 0 && (
+        <p>新面孔 <b>{r.new_dishes.length}</b> 道
+          <span className="dimtext">（{r.new_dishes.slice(0, 6).join("、")}{r.new_dishes.length > 6 ? "…" : ""}）</span>
+        </p>
+      )}
+      {r.repeat_top && <p>回锅之王：<b>{r.repeat_top.name}</b>，做了 {r.repeat_top.times} 回</p>}
+      {r.streak_weeks >= 2 && <p>连续开火 <b>{r.streak_weeks}</b> 周了</p>}
+      {r.orders_done && r.orders_done.count > 0 && (
+        {/* orders_done=家人点的菜做掉数；别写「翻牌子」——那是随机抽菜功能，撞名会把两件事搅一起 */}
+        <p>家里点的菜做掉 <b>{r.orders_done.count}</b> 道
+          {r.orders_done.froms.length > 0 && <span className="dimtext">（{r.orders_done.froms.join("、")} 点的）</span>}
+        </p>
+      )}
+      {r.five_star.length > 0 && (
+        <p>五星高光：<b>{r.five_star.slice(0, 3).join("、")}</b>
+          {r.five_star.length > 3 && <span className="dimtext">　等 {r.five_star.length} 道</span>}
+        </p>
+      )}
+      {r.photos > 0 && <p>带图 <b>{r.photos}</b> 张</p>}
+      {r.nutri_note && <p className="dimtext">{r.nutri_note}</p>}
       {r.tip && <p className="tipline">「{r.tip}」</p>}
-      <p className="dimtext">热量为估算值，看趋势就好</p>
     </div>
   );
 }
@@ -123,7 +143,8 @@ export default function Timeline() {
               <span className="dimtext">　今日 ≈<span style={overGoal ? { color: "var(--accent)", fontWeight: 600 } : undefined}>{todayKcal}</span> kcal{goal ? ` / ${goal}` : ""}{overGoal ? " 超了" : ""}</span>
             )}
             {todayUncounted > 0 && <span className="dimtext">　{todayUncounted} 餐没热量未计入</span>}
-            {weekMeals.length > 0 && <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span>}</span>
+            {/* 空周也能点开小结——周报契约的 empty 态会给一句话，不再藏死 */}
+            <span className="dimtext">　{showReport ? "收起" : "小结 ›"}</span></span>
           {/* 裸 <a> 不经 fetch 包装，开了主人令牌后点开会是 401 JSON —— 带上令牌 */}
           {meals.some(m => m.date.startsWith(curMonth)) && (
             <a href={`/api/monthcard/${curMonth}${getToken() ? `?token=${encodeURIComponent(getToken())}` : ""}`}

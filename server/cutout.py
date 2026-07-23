@@ -1,7 +1,8 @@
 """抠图美化管线：原图 → rembg 抠出碗盘（透明 PNG）→ 合成深色底菜卡。
 
-模型默认 isnet-general-use（约 180MB，首次运行自动下载）；
-追求更高质量可设环境变量 YIDANSHI_MODEL=birefnet-general（约 930MB）。
+模型默认 birefnet-general（约 930MB，首次运行自动下载到 ~/.u2net/——第一张抠图
+会等几分钟，属预期不是卡死；抠图质量显著好于轻量模型）；
+想省磁盘/内存可设环境变量 YIDANSHI_MODEL=isnet-general-use 退回轻量模型（约 180MB）。
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageFilter
 
-MODEL = os.environ.get("YIDANSHI_MODEL", "isnet-general-use")
+MODEL = os.environ.get("YIDANSHI_MODEL", "birefnet-general")
 CARD_SIZE = 1024
 CARD_BG = (244, 239, 227, 255)  # 暖米白宣纸底（与前端 --bg 一致），盘子落在纸上
 SUBJECT_RATIO = 0.78         # 主体占卡片宽度比例
@@ -37,15 +38,6 @@ def _have_rembg() -> bool:
         return True
     except Exception:
         return False
-
-
-def backend() -> str:
-    """当前可用的抠图通道：rembg（本地，现状）→ segfood（云端阿里云）→ ""（只剩圆框直裁）。"""
-    if _have_rembg():
-        return "rembg"
-    from . import segfood
-
-    return "segfood" if segfood.available() else ""
 
 
 @lru_cache(maxsize=1)

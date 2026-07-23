@@ -15,6 +15,13 @@ export interface Order {
 }
 /** 每日荐（规则版，主人接口）：0-2 条；请求失败/空数组 → 整条不渲染 */
 export interface Suggestion { recipe_id: string; name: string; reason: string }
+/** 周报（行为化契约）：empty:true 时只渲染 line 一句；可选行有则显示、无则整行不出 */
+export interface WeekReport {
+  empty: boolean; line: string; meals: number; days: number; delta_meals: number | null;
+  new_dishes: string[]; repeat_top: { name: string; times: number } | null; streak_weeks: number;
+  orders_done: { count: number; froms: string[] } | null; five_star: string[]; photos: number;
+  nutri_note: string | null; tip: string;
+}
 export interface ShopItem { name: string; amounts: string; recipes: string; checked: boolean; seasoning: boolean }
 export interface Meal {
   id: string; recipe_id: string; recipe_name: string; date: string;
@@ -57,8 +64,7 @@ export const api = {
   savePantry: (items: string[]) => j<{ items: string[] }>(fetch("/api/pantry", {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
   })),
-  weekreport: () => j<{ meals: number; kcal: number; uncounted?: number; kcal_avg: number | null; protein_meals: number; veg_kinds: string[];
-    categories: Record<string, number>; tip: string }>(fetch("/api/weekreport")),
+  weekreport: () => j<WeekReport>(fetch("/api/weekreport")),
   nutritionPreview: (ingredients: Ingredient[]) =>
     j<{ kcal?: number; protein_g?: number; fat_g?: number; carb_g?: number; missing?: string[] }>(
       fetch("/api/nutrition/preview", {

@@ -197,6 +197,11 @@ def make_backup():
 
 # ---------- 菜谱 ----------
 
+# 示例菜 id 集合（examples/recipes/*.md 文件名，与 frontmatter id 一致）：启动时读一次缓存；
+# 按 id 判定，文件/DB 两模式行为一致。前端靠 demo 标记把示例菜标出来
+_DEMO_IDS = frozenset(p.stem for p in (storage.ROOT / "examples" / "recipes").glob("*.md"))
+
+
 @app.get("/api/recipes")
 def recipes():
     stats = storage.recipe_stats()
@@ -205,7 +210,8 @@ def recipes():
         s = stats.get(r["id"], {})
         whole, src = nutrition.effective(r)
         out.append({**r, "times": s.get("times", 0), "rating": s.get("rating"),
-                    "kcal_effective": nutrition.per_serving_kcal(r), "kcal_whole": whole, "kcal_source": src})
+                    "kcal_effective": nutrition.per_serving_kcal(r), "kcal_whole": whole, "kcal_source": src,
+                    "demo": r["id"] in _DEMO_IDS})
     return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
 
 
@@ -422,8 +428,8 @@ async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(Fals
     """mode: plate=抠出食物摆插画盘 / auto=AI抠图直出 / circle=参考圆直裁 / both=全都出让用户选 /
     polish=AI 图生图精修原照片；cx/cy/r 为参考圆相对坐标。
 
-    抠图三级链：rembg 可用（本地）→ 现状；否则 segfood（云端阿里云）抠出主体走同样的
-    摆盘合成；都没有 → 只出 circle 模式结果，响应加 note 说明。"""
+    抠图降级链：本地 rembg（birefnet）→（配了阿里云凭证时）segfood 抠出主体走同样的
+    摆盘合成 → 圆框直裁（响应加 note 说明）。云端镜像本就无 rembg，行为不变。"""
     raw = await photo.read()
     stamp = datetime.now().strftime("p%Y%m%d%H%M%S%f")
     ext = Path(photo.filename or "x.jpg").suffix or ".jpg"
@@ -446,20 +452,27 @@ async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(Fals
         results = {"plate": (img[0], plate), "auto": img}
     else:
         modes = ["plate", "auto", "circle"] if mode == "both" else [mode]
-        tier = cutout.backend()
-        seg = None
-        if tier == "segfood" and any(m in ("plate", "auto") for m in modes):
+        want_ai = any(m in ("plate", "auto") for m in modes)
+        results = {}
+        # 第一级：本地 rembg（birefnet）。失败（模型下载失败/推理崩）别 500，往下降级
+        if cutout._have_rembg():
+            try:
+                results = cutout.process_modes(raw, modes, circle)
+            except Exception:  # noqa: BLE001
+                results = {}
+        # 第二级：本地没抠出主体（未装 rembg / 上面失败）→ segfood（配了阿里云凭证时）
+        if want_ai and not any(m in ("plate", "auto") for m in results):
             focused = cutout._crop_region(raw, *circle) if circle else raw
-            seg = segfood.cut(focused)  # 失败返回 None，走下面的圆框兜底
-        if tier == "rembg":
-            results = cutout.process_modes(raw, modes, circle)
-        elif seg is not None:
-            results = cutout.process_modes(raw, modes, circle, precut=seg)
-        elif any(m in ("plate", "auto") for m in modes):
-            # 云端未配抠图（或 segfood 这张没抠出来）：只出圆框直裁
-            results = cutout.process_modes(raw, ["circle"], circle) if circle else {}
-            note = "云端未配抠图，仅圆框直裁"
-        else:
+            seg = segfood.cut(focused)  # 未配凭证/库缺/失败一律返回 None
+            if seg is not None:
+                results = cutout.process_modes(raw, modes, circle, precut=seg)
+        # 第三级：全链都没抠出来 → 只出圆框直裁，note 说明
+        if want_ai and not any(m in ("plate", "auto") for m in results):
+            if not results:
+                results = cutout.process_modes(raw, ["circle"], circle) if circle else {}
+            note = ("本地抠图失败，仅圆框直裁" if cutout._have_rembg()
+                    else "云端未配抠图，仅圆框直裁")
+        elif not want_ai and not results:
             results = cutout.process_modes(raw, modes, circle)  # 只要 circle：不需要抠图通道
 
     out = []
@@ -690,22 +703,33 @@ def guest_order(body: dict):
     if not isinstance(raw, list):
         raise HTTPException(400, "点单格式不对")
     names = {r["id"]: r["name"] for r in storage.list_recipes()}
-    items = []
+    accepted, dropped = [], []
     for it in raw:  # 兼容两种格式：旧=菜 id 字符串；新={id, note}（每道菜可备注：少放辣…）
         rid, note = (it, "") if isinstance(it, str) else (str(it.get("id", "")), str(it.get("note", ""))) \
             if isinstance(it, dict) else ("", "")
         if rid in names:
-            items.append({"recipe_id": rid, "name": names[rid], "note": note.strip()[:60]})
-    if not items:
+            accepted.append({"recipe_id": rid, "name": names[rid], "note": note.strip()[:60]})
+        else:
+            # 菜已被主人收回（或 id 无效）：进 dropped 如实回显，不再静默吞掉
+            # （客人以为点上了、主人没收到 = 静默丢失显示成功）；回显标识优先用
+            # 请求里带的菜名，没有再用 id；连标识都没有的垃圾条目直接忽略
+            label = (str(it.get("name", "")).strip() if isinstance(it, dict) else "") or rid.strip()
+            if label:
+                dropped.append(label[:60])
+    if not accepted and not dropped:
         raise HTTPException(400, "先点至少一道菜")
+    if not accepted:
+        # 点的菜全被收回：200 + ok:false 如实相告，不落库（请求本身没错，不该 400）
+        return {"ok": False, "accepted": [], "dropped": dropped}
     orders = _orders()
     orders.append({"id": f"o{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
                    "from": str(body.get("from", "")).strip()[:20] or "神秘食客",
                    "note": str(body.get("note", "")).strip()[:200],
-                   "items": items, "date": date.today().isoformat(), "done": False})
+                   "items": accepted, "date": date.today().isoformat(), "done": False})
     storage.write_doc("orders", orders)
     _notify_owner(orders[-1])
-    return {"ok": True}
+    # 旧客户端只看 ok；accepted/dropped 是新增字段（只增不减），前端成功态按回执渲染
+    return {"ok": True, "accepted": accepted, "dropped": dropped}
 
 
 @app.get("/api/orders")
@@ -719,6 +743,12 @@ def update_order(oid: str, body: dict):
     for o in orders:
         if o["id"] == oid:
             o["done"] = bool(body.get("done", True))
+            if o["done"]:
+                # 完成日（周报「本周做掉的单」按它统计）；重复标完成不刷新首次日期。
+                # 旧数据无此字段，读取方需容错
+                o.setdefault("done_date", date.today().isoformat())
+            else:
+                o.pop("done_date", None)  # 取消完成 → 完成日一并撤掉
             storage.write_doc("orders", orders)
             return o
     raise HTTPException(404, "没有这单")
@@ -760,52 +790,108 @@ def put_shopping(body: dict):
 
 @app.get("/api/weekreport")
 def weekreport():
-    """营养轻周报：规则版（零成本零延迟），温和提示不审判。"""
-    import re as _re
+    """行为周报：做饭行为报告（规则版零 AI）——回答「这周我把日子过起来了吗」，
+    不再是营养审计；营养降为一行附注 nutri_note。空周只给一句话（empty + line）。"""
     from collections import Counter
 
     monday = date.today() - timedelta(days=date.today().weekday())
+    mon_iso = monday.isoformat()
     # 上界不能省：日期填成 2027 年的记录会永久混进「本周」（字符串比较 "2027-.." >= 本周一恒真）
     next_monday = (monday + timedelta(days=7)).isoformat()
-    meals = [m for m in storage.list_meals()
-             if monday.isoformat() <= str(m.get("date", "")) < next_monday]
+    prev_monday = (monday - timedelta(days=7)).isoformat()
+    all_meals = storage.list_meals()
+    meals = [m for m in all_meals if mon_iso <= str(m.get("date", "")) < next_monday]
+    last_meals = [m for m in all_meals if prev_monday <= str(m.get("date", "")) < mon_iso]
     recipes = {r["id"]: r for r in storage.list_recipes()}
-    PROT = _re.compile(r"肉|鸡|鸭|鹅|牛|猪|鱼|虾|蛋|豆腐|豆干|排骨|培根|火腿|贝|蟹")
-    VEG = _re.compile(r"菜|瓜|笋|菇|芹|番茄|西红柿|萝卜|土豆|茄|豆角|芦笋|西兰花|菠菜|生菜|黄瓜|藕|山药|玉米")
 
-    protein_meals, veg_kinds, cats = 0, set(), Counter()
-    kcal, kcal_meals = 0, 0  # 只累计「有热量快照/可估」的餐，null 不当 0 混入
+    def _mname(m: dict) -> str:
+        # 菜名口径：记餐时的快照优先（菜谱日后被删/改名不影响历史），再查菜谱，再退 id
+        r = recipes.get(m.get("recipe_id"))
+        return m.get("recipe_name") or (r["name"] if r else str(m.get("recipe_id") or ""))
+
+    days = len({str(m["date"]) for m in meals})
+    delta = len(meals) - len(last_meals) if last_meals else None  # 上周无数据 → null
+
+    # 新面孔：全表求每道菜最早记录日期，落在本周的 → 本周首做
+    first: dict[str, str] = {}
+    for m in all_meals:
+        rid, dt = m.get("recipe_id"), str(m.get("date", ""))
+        if rid and dt:
+            first[rid] = min(first.get(rid, dt), dt)
+    new_dishes, _seen = [], set()
     for m in meals:
-        r = recipes.get(m["recipe_id"])
-        # 优先用记餐时的热量快照（改菜谱不追溯篡改历史），无快照的老记录再回退实时估——与 /api/meals 口径一致
+        rid = m.get("recipe_id")
+        if rid and rid not in _seen and mon_iso <= first.get(rid, "") < next_monday:
+            _seen.add(rid)
+            new_dishes.append(_mname(m))
+
+    # 回锅之王：本周做过 ≥2 次的第一名
+    cnt = Counter(m.get("recipe_id") for m in meals if m.get("recipe_id"))
+    repeat_top = None
+    if cnt:
+        rid, times = cnt.most_common(1)[0]
+        if times >= 2:
+            repeat_top = {"name": next(_mname(m) for m in meals if m.get("recipe_id") == rid),
+                          "times": times}
+
+    # 连续开火周数（含本周）：有记录的周一收进集合，从本周往回数到断
+    week_set = set()
+    for m in all_meals:
+        try:
+            d0 = date.fromisoformat(str(m.get("date", "")))
+        except ValueError:
+            continue  # 脏日期不参与
+        week_set.add((d0 - timedelta(days=d0.weekday())).isoformat())
+    streak, wk = 0, monday
+    while wk.isoformat() in week_set:
+        streak += 1
+        wk -= timedelta(days=7)
+
+    # 本周做掉的家人点单：done_date 落在本周（P0-2 起写入；旧单无此字段 → 自然不计）
+    done_orders = [o for o in _orders()
+                   if o.get("done") and mon_iso <= str(o.get("done_date", "")) < next_monday]
+    froms = list(dict.fromkeys(str(o.get("from") or "神秘食客") for o in done_orders))
+    orders_done = {"count": len(done_orders), "froms": froms} if done_orders else None
+
+    five_star = list(dict.fromkeys(_mname(m) for m in meals if m.get("rating") == 5))
+    photos = sum(1 for m in meals if m.get("photo_card"))
+
+    # 营养附注一行：热量快照优先、无快照回退实时估（与 /api/meals 口径一致）；算不出给 null
+    PROT = re.compile(r"肉|鸡|鸭|鹅|牛|猪|鱼|虾|蛋|豆腐|豆干|排骨|培根|火腿|贝|蟹")
+    kcal_sum, kcal_meals, protein_meals = 0, 0, 0
+    for m in meals:
+        r = recipes.get(m.get("recipe_id"))
         k = m.get("kcal")
         if k is None and r is not None:
             k = nutrition.per_serving_kcal(r)
         if k is not None:
-            kcal += k
+            kcal_sum += k
             kcal_meals += 1
-        if not r:  # 菜谱已删：热量快照仍计入上面，但没食材算不了蛋白/蔬菜/分类
-            continue
-        cats[r["category"]] += 1
-        ings = [i["name"] for i in r["ingredients"]]
-        if any(PROT.search(n) for n in ings):
+        if r is not None and any(PROT.search(i["name"]) for i in r["ingredients"]):
             protein_meals += 1
-        veg_kinds |= {n for n in ings if VEG.search(n)}
+    nutri_note = (f"≈{round(kcal_sum / kcal_meals)} kcal/餐均 · 蛋白餐 {protein_meals}"
+                  if kcal_meals else None)
 
-    if not meals:
-        tip = ""
-    elif len(veg_kinds) < 3:
-        tip = "蔬菜种类有点少，下周添一两样绿叶菜试试？"
-    elif protein_meals < max(1, len(meals) // 2):
-        tip = "蛋白质可以再安排上一点（蛋豆鱼肉都算）。"
+    # tip：六级优先规则取第一条（朱批口吻，温和不审判）
+    if streak >= 3:
+        tip = f"连着 {streak} 周灶上有火，过日子的样子"
+    elif new_dishes:
+        tip = (f"本周添了『{new_dishes[0]}』，档案又厚一页" if len(new_dishes) == 1
+               else f"本周添了『{new_dishes[0]}』等 {len(new_dishes)} 道新菜，档案又厚几页")
+    elif orders_done:
+        tip = "家里点的菜都做齐了，厨房有人惦记"
+    elif delta is not None and delta >= 2:
+        tip = f"比上周多开了 {delta} 次火"
+    elif len(meals) <= 2:
+        tip = "这周外食多了些，下周回来开两次火？"
     else:
-        tip = "吃得挺均衡，保持这个节奏。"
-    return {"meals": len(meals), "kcal": kcal, "uncounted": len(meals) - kcal_meals,
-            # 菜谱已删的餐算进 meals 但没食材可分类，单列出来，免得分类合计和总餐数对不上
-            "uncategorized": len(meals) - sum(cats.values()),
-            "kcal_avg": round(kcal / kcal_meals) if kcal_meals else None,
-            "protein_meals": protein_meals,
-            "veg_kinds": sorted(veg_kinds), "categories": dict(cats), "tip": tip}
+        tip = "细水长流，记着就好"
+
+    return {"empty": not meals, "line": "这周没开火，歇着也好" if not meals else None,
+            "meals": len(meals), "days": days, "delta_meals": delta,
+            "new_dishes": new_dishes, "repeat_top": repeat_top, "streak_weeks": streak,
+            "orders_done": orders_done, "five_star": five_star, "photos": photos,
+            "nutri_note": nutri_note, "tip": tip}
 
 
 @app.get("/api/monthcard/{month}")

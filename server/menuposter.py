@@ -195,12 +195,19 @@ def _dish_row(img: Image.Image, d: ImageDraw.ImageDraw, y: int, r: dict, st: dic
 def _orders_block(d: ImageDraw.ImageDraw, y: int, orders: list[dict]) -> int:
     y = _section_header(d, y + 6, "候膳", None, color=RED)
     f = _kai(30)
+    maxw = W - 90 - 110  # 行起点 110，右缘与正文同底线（W-90）
     for o in orders:
         who = str(o.get("from") or "神秘食客")
         for it in o.get("items", []):
             note = f"（{it['note']}）" if it.get("note") else ""
-            d.text((110, y + 16), f"{who} 点：{it.get('name', '')}{note}，候", font=f,
-                   anchor="lm", fill=RED)
+            text = f"{who} 点：{it.get('name', '')}{note}，候"
+            # 长备注/长署名会横穿右边框：按 textlength 实测宽度裁断加「…」（保住句尾「，候」）
+            if f.getlength(text) > maxw:
+                head, tail = f"{who} 点：{it.get('name', '')}{note}", "…，候"
+                while head and f.getlength(head + tail) > maxw:
+                    head = head[:-1]
+                text = head + tail
+            d.text((110, y + 16), text, font=f, anchor="lm", fill=RED)
             y += 50
     return y + 14
 

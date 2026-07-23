@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Recipe } from "../api";
 
-/** 亲友点菜页：只读食单 + 勾菜下单，无任何编辑入口 */
+/** 亲友点菜页：只读食单 + 勾菜传旨，无任何编辑入口 */
 export default function Guest({ token }: { token: string }) {
   const [cats, setCats] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
@@ -80,7 +80,7 @@ export default function Guest({ token }: { token: string }) {
           {err && <div className="err">{err}</div>}
           <div className="row" style={{ marginTop: 16 }}>
             <button className="btn ghost" onClick={() => setOrdering(false)}>再看看</button>
-            <button className="btn" onClick={submit}>下单（{picked.size} 道）</button>
+            <button className="btn" onClick={submit}>传旨（{picked.size} 道）</button>
           </div>
         </>
       ) : (
@@ -99,7 +99,8 @@ export default function Guest({ token }: { token: string }) {
                     <h3>{r.name}</h3>
                     <div className="chips">
                       <span className="chip">★ {r.rating?.toFixed(1) ?? "—"}</span>
-                      <span className="chip">被点过 {r.times} 回</span>
+                      {/* times 是主人做过的次数，不是被点次数——别再标成「被点过」 */}
+                      <span className="chip">做过 {r.times} 回</span>
                       {r.minutes != null && <span className="chip">⏱{r.minutes}min</span>}
                       {/* guest 的 kcal 是「每餐」值，必须标 /餐——否则访客会把它读成整道菜的热量 */}
                       {r.kcal != null && <span className="chip">≈{r.kcal} kcal{(r.servings ?? 1) > 1 ? "/餐" : ""}</span>}
