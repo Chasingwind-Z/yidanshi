@@ -23,6 +23,8 @@ export default function Index() {
   const [fan, setFan] = useState(false);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
+  // 客人从主入口进来：主人锁 401 不该甩报错——给个体面的门面，有口令就引去点菜
+  const [guestLocked, setGuestLocked] = useState(false);
   // 云端封面 URL 可能 404（迁移后 COS 对象不在）：记下坏图，回退到空盘占位，别显示裂图
   const [coverErr, setCoverErr] = useState<Record<string, boolean>>({});
   const failCover = (rid: string) => setCoverErr(m => (m[rid] ? m : { ...m, [rid]: true }));
@@ -100,7 +102,12 @@ export default function Index() {
       setCat(c => (c && all.includes(c) ? c : all[0] || ""));
       setErr("");
     }).catch(e => {  // 不 catch 的话任何 5xx 都是永久「加载中」
-      setErr((e as Error).message);
+      const msg = (e as Error).message || "";
+      if (msg.includes("主人令牌")) {  // 401 = 客人视角，不是故障，别弹 toast 吓人
+        setGuestLocked(true);
+        return;
+      }
+      setErr(msg);
       toastErr(e);
     });
   }
@@ -111,6 +118,27 @@ export default function Index() {
       .catch(() => setWishCount(0));
     api.suggest().then(s => setSug(s.suggestions)).catch(() => setSug([]));
   });
+
+  if (guestLocked) {
+    const t = (Taro.getStorageSync("guest_t") as string) || "";
+    return (
+      <View className="page">
+        <View className="empty">
+          <View className="empty-ico">🍚</View>
+          <Text>这是一间私人小厨房</Text>
+          <View className="dimtext">
+            {t ? "你手里有点菜卡片，去看看今天有什么菜吧" : "食单只有主人自己能看；让主人发你一张「点菜卡片」，就能来点菜啦"}
+          </View>
+          {t !== "" && (
+            <View className="btn retry-btn" hoverClass="btn-hover"
+              onClick={() => Taro.navigateTo({ url: `/pages/order/index?t=${encodeURIComponent(t)}` })}>
+              去点菜 ›
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  }
 
   if (recipes === null) {
     return (

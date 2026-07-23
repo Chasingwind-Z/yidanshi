@@ -33,6 +33,8 @@ export default function Order() {
         const used = [...new Set(recipes.map(r => r.category))];
         setCats(["全部", ...categories.filter(c => used.includes(c)), ...used.filter(c => !categories.includes(c))]);
         setDishes(recipes);
+        // 口令验证有效才记住：客人以后从主入口进来（食单页 401），能被引导回点菜页
+        Taro.setStorageSync("guest_t", token);
       })
       .catch(() => setBad(true)); // 403（链接失效）与网络错都归到友好空态
   }, [token]);
