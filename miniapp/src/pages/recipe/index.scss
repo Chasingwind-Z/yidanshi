@@ -325,3 +325,70 @@
 .foot {
   margin-top: 10px;
 }
+
+/* 补录做法（P1-3）：入口墙 + AI 代录 / 手动补几笔 两个弹层（共用 ingsheet 基底） */
+.fillwall {
+  text-align: center;
+  color: var(--dim);
+  font-size: 14px;
+}
+.fillwall.slim {
+  padding: 4px 0 0;
+  margin-bottom: 16px;
+}
+.fill-acts {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.fillhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.filltitle {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 700;
+}
+.fillhead .close {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.filltext {
+  min-height: 120px;
+}
+.fillgo {
+  margin-top: 12px;
+}
+.fillscroll {
+  max-height: 50vh;
+}
+.fillrow {
+  margin-bottom: 8px;
+}
+.fillrow .grow2 {
+  flex: 1.5;
+}
+.fillrow .grow1 {
+  flex: 1;
+}
+.fillstep {
+  min-height: 0;
+}
+.fill-add {
+  color: var(--accent);
+  font-size: 14px;
+  padding: 6px 0 2px;
+}

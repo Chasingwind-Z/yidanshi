@@ -221,6 +221,13 @@
   font-size: 14px;
   margin-bottom: 6px;
 }
+/* 被收回菜的朱批体提示：朱砂 + 楷体小字，如实相告不吓人 */
+.sent-dropped {
+  color: var(--accent);
+  font-family: var(--serif);
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
 .sent-again {
   margin-top: 16px;
 }

@@ -155,6 +155,9 @@ export default function Index() {
     ? recipes.filter(r => r.name.includes(kw) || r.category.includes(kw) || r.ingredients.some(i => i.name.includes(kw)))
     : fewDishes ? recipes : recipes.filter(r => r.category === cat);
 
+  // 今日荐守门：上午划掉的菜下午不能被荐回来——按当日 fan_skip 过滤；全被划掉则整卡当空处理
+  const sugShown = sug.filter(s => !skipped.includes(s.recipe_id));
+
   const toggles: { label: string; on: boolean; set: (v: boolean) => void }[] = [
     { label: "最近 7 天没做过的", on: avoid7, set: setAvoid7 },
     { label: "30 分钟内能做的", on: quick30, set: setQuick30 },
@@ -183,8 +186,17 @@ export default function Index() {
           <View className="row empty-acts">
             <View className="btn" hoverClass="btn-hover"
               onClick={() => Taro.switchTab({ url: "/pages/record/index" })}>记下第一顿饭</View>
+            {/* 「看看」是误导动词——它真的会写入 7 道菜，按钮说实话 + 落笔前确认一次 */}
             <View className="btn ghost" hoverClass="btn-hover"
-              onClick={() => api.seedExamples().then(load).catch(toastErr)}>先看看示例食单</View>
+              onClick={async () => {
+                const { confirm } = await Taro.showModal({
+                  title: "摆示例菜",
+                  content: "会往食单里放 7 道示例菜，随时可一道道删掉",
+                  confirmText: "摆上",
+                  cancelText: "先不了",
+                });
+                if (confirm) api.seedExamples().then(load).catch(toastErr);
+              }}>摆 7 道示例菜看看</View>
           </View>
         </View>
       ) : (
@@ -220,9 +232,9 @@ export default function Index() {
                   <View className="minibtn" hoverClass="btn-hover" onClick={skipDrawn}>不想吃，换一张</View>
                 </View>
               </View>
-            ) : sug.length > 0 && (
+            ) : sugShown.length > 0 && (
               <View className="sug-list">
-                {sug.map(s => (
+                {sugShown.map(s => (
                   <View className="sug-item" key={s.recipe_id}>
                     <Text className="sug-name" onClick={() =>
                       Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(s.recipe_id)}` })}>
@@ -268,7 +280,8 @@ export default function Index() {
                     <View className="coverwrap noimg">
                       <View className="ring" />
                       <Text className="rice">🍚</Text>
-                      <Text className="noimg-hint">做好拍一张，就有封面了</Text>
+                      {/* 示例菜不是用户做的——「做好拍一张」对它不成立，如实标示例菜 */}
+                      <Text className="noimg-hint">{r.demo ? "示例菜" : "做好拍一张，就有封面了"}</Text>
                     </View>
                   )}
                   <View className="body">

@@ -167,6 +167,9 @@ export default function Record() {
         photo_id: picked?.photo_id,
         date, rating, note,
       });
+      // 今日荐预热：记一餐会让 AI 荐的缓存失效，趁盖章动画顺手让服务端先算——
+      // fire-and-forget，结果丢弃，失败无感（首页下次打开就不用等 20 秒了）
+      api.suggest().catch(() => {});
       // 盖章庆祝：保存一成功就落印（纯 CSS 动画），期间下面的回填检查照常进行不被阻塞
       const CELEBRATE_MS = 1250;
       const stamped = Date.now();

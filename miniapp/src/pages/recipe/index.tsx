@@ -1,8 +1,9 @@
-// 菜谱详情（移植 web/src/pages/Recipe.tsx；砍掉：插画生成按钮、导出长图、编辑器。
-// 已有插画照常展示；食材小百科（两行营养对照 + 粗估/无法折算三分支文案）逻辑照抄 web）
+// 菜谱详情（移植 web/src/pages/Recipe.tsx；砍掉：插画生成按钮、导出长图、完整编辑器。
+// 已有插画照常展示；食材小百科（两行营养对照 + 粗估/无法折算三分支文案）逻辑照抄 web。
+// P1-3：没录做法的菜不再指去 Web——AI 代录（贴链接/文案）+ 手动补几笔两个补录入口）
 import { useEffect, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
-import { Image, Text, View } from "@tarojs/components";
+import { Image, Input, ScrollView, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, type IngInfo, type Recipe } from "../../api";
 import { Loading, PosterSheet } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
@@ -142,9 +143,91 @@ export default function RecipePage() {
   const [imgErr, setImgErr] = useState<Record<string, boolean>>({});
   const failImg = (k: string) => setImgErr(m => (m[k] ? m : { ...m, [k]: true }));
 
+  // 补录做法（P1-3）：ai = 贴教程链接/文案 AI 代录；manual = 手动补几笔轻表单
+  const [fill, setFill] = useState<"" | "ai" | "manual">("");
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState("");
+  const [mIngs, setMIngs] = useState<{ name: string; amount: string; grams: number | null }[]>([]);
+  const [mSteps, setMSteps] = useState<string[]>([]);
+  const [mSaving, setMSaving] = useState(false);
+
   useEffect(() => {
     api.recipe(id).then(setR).catch(() => setMissing404(true));
   }, [id]);
+
+  function openManual() {
+    if (!r) return;
+    // 预填已有食材（grams 跟着行走，存回不丢克重）；空表给三行起步
+    const ings = r.ingredients.map(x => ({ name: x.name, amount: x.amount, grams: x.grams ?? null }));
+    while (ings.length < 3) ings.push({ name: "", amount: "", grams: null });
+    setMIngs(ings);
+    setMSteps(r.steps.length > 0 ? [...r.steps] : ["", "", ""]);
+    setFill("manual");
+  }
+
+  async function aiGo() {
+    const raw = aiText.trim();
+    if (!raw || aiBusy || !r) return;
+    setAiErr("");
+    setAiBusy(true);
+    try {
+      // 粘的是分享链接（抖音口令等）→ 服务端抓文案；纯文字 → 直接整理（判定照抄 web Recipe.tsx）
+      const link = raw.match(/https?:\/\/\S+/)?.[0];
+      const isLinkMode = !!link && raw.replace(/https?:\/\/\S+/, "").trim().length < 80;
+      // 本地 claude-cli 可能 30s+：60s 还没回就温和失败（不重试，避免重复写）
+      const timeout = new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error("管家研读超时了——稍后再试，或先手动补几笔")), 60000));
+      const x = await Promise.race([
+        api.aiExtract(isLinkMode ? "" : raw, r.source, isLinkMode ? link : undefined),
+        timeout,
+      ]);
+      // PUT 是 merge 语义（body 带的字段覆盖）：只写做法相关字段；菜名/分类是这道菜的身份，不让 AI 改
+      const patch: Partial<Recipe> = { id, ingredients: x.ingredients, steps: x.steps, tips: x.tips };
+      if (x.kcal != null) patch.kcal = x.kcal;
+      if (x.minutes != null) patch.minutes = x.minutes;
+      if (x.difficulty) patch.difficulty = x.difficulty;  // 翻牌子的「只要简单省事的」靠它
+      // servings 不收：几餐由记一餐后的回填流程问本人，AI 猜的分餐数会带偏 kcal/餐 显示
+      if (isLinkMode && link && r.source === "") patch.source = link;  // 顺手补上教程来源（不覆盖已有）
+      await api.saveRecipe(patch);
+      setR(await api.recipe(id));
+      setFill("");
+      setAiText("");
+    } catch (e) {
+      // 分不清是通道没配还是这次没成：问一下 ai/status——没配好就别让人干等，转手动
+      const st = await api.aiStatus().catch(() => null);
+      if (st && !st.available) {
+        Taro.showToast({ title: "AI 通道没配好，先手动补几笔吧", icon: "none" });
+        openManual();
+      } else {
+        setAiErr((e as Error).message || "管家没研读出来，再试一次？");
+      }
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function manualSave() {
+    if (!r || mSaving) return;
+    const ings = mIngs
+      .map(x => ({ name: x.name.trim(), amount: x.amount.trim(), grams: x.grams }))
+      .filter(x => x.name !== "");
+    const steps = mSteps.map(s => s.trim()).filter(s => s !== "");
+    if (ings.length === 0 && steps.length === 0) {
+      Taro.showToast({ title: "食材或步骤先写一条", icon: "none" });
+      return;
+    }
+    setMSaving(true);
+    try {
+      await api.saveRecipe({ id, ingredients: ings, steps });
+      setR(await api.recipe(id));
+      setFill("");
+    } catch (e) {
+      toastErr(e);
+    } finally {
+      setMSaving(false);
+    }
+  }
 
   function goRecord() {
     // record 是 tabBar 页，switchTab 带不了参数——预选菜谱走 storage
@@ -229,7 +312,7 @@ export default function RecipePage() {
         </View>
       )}
 
-      {hasTutorial ? (
+      {hasTutorial && (
         <View className="tcard">
           <View className="tname">{r.name}</View>
           <View className="tby">by zzf</View>
@@ -287,10 +370,18 @@ export default function RecipePage() {
             </View>
           )}
         </View>
-      ) : (
-        <View className="empty">
-          <View className="empty-ico">🍚</View>
-          <Text>还没录做法（v1 请在 Web 端录入）</Text>
+      )}
+
+      {/* 没有步骤就给补录入口（拆掉「v1 请在 Web 端录入」那堵墙）：AI 代录 + 手动轻表单 */}
+      {r.steps.length === 0 && (
+        <View className={hasTutorial ? "fillwall slim" : "empty fillwall"}>
+          {!hasTutorial && <View className="empty-ico">🍚</View>}
+          <Text>{hasTutorial ? "做法步骤还空着" : "还没录做法"}</Text>
+          <View className="fill-acts">
+            <View className="btn" hoverClass="btn-hover"
+              onClick={() => { setAiErr(""); setFill("ai"); }}>贴教程链接/文案，AI 帮你录</View>
+            <View className="btn ghost" hoverClass="btn-hover" onClick={openManual}>手动补几笔</View>
+          </View>
         </View>
       )}
 
@@ -310,6 +401,74 @@ export default function RecipePage() {
       </View>
       {ingSheet && <IngredientSheet {...ingSheet} onClose={() => setIngSheet(null)} />}
       {posterUrl !== "" && <PosterSheet url={posterUrl} title="插画教程卡" onClose={() => setPosterUrl("")} />}
+
+      {fill === "ai" && (
+        <View className="sheetscrim" catchMove onClick={() => { if (!aiBusy) setFill(""); }}>
+          <View className="ingsheet fillsheet" onClick={e => e.stopPropagation()}>
+            <View className="fillhead">
+              <Text className="filltitle">AI 帮你录</Text>
+              <View className="close" onClick={() => { if (!aiBusy) setFill(""); }}>✕</View>
+            </View>
+            <Textarea className="ta filltext" placeholderClass="ph" value={aiText} maxlength={-1}
+              disabled={aiBusy} onInput={e => setAiText(e.detail.value)}
+              placeholder="粘贴抖音/下厨房链接，或整段文字教程" />
+            {aiErr !== "" && <View className="err">{aiErr}</View>}
+            <View className={`btn fillgo ${aiBusy || aiText.trim() === "" ? "disabled" : ""}`}
+              hoverClass="btn-hover" onClick={aiGo}>
+              {aiBusy ? "管家研读中，约需十几秒…" : "开始整理"}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {fill === "manual" && (
+        <View className="sheetscrim" catchMove onClick={() => setFill("")}>
+          <View className="ingsheet fillsheet" onClick={e => e.stopPropagation()}>
+            <View className="fillhead">
+              <Text className="filltitle">手动补几笔</Text>
+              <View className="close" onClick={() => setFill("")}>✕</View>
+            </View>
+            <ScrollView scrollY className="fillscroll">
+              <View className="f">食材（名字 + 用量，空行不算）</View>
+              {mIngs.map((x, i) => (
+                <View key={i} className="row fillrow">
+                  <View className="grow2">
+                    <Input className="ipt" placeholderClass="ph" placeholder="食材，如：鸡蛋" value={x.name}
+                      onInput={e => {
+                        const v = e.detail.value;
+                        setMIngs(a => a.map((y, j) => (j === i ? { ...y, name: v } : y)));
+                      }} />
+                  </View>
+                  <View className="grow1">
+                    <Input className="ipt" placeholderClass="ph" placeholder="用量，如：2 个" value={x.amount}
+                      onInput={e => {
+                        const v = e.detail.value;
+                        setMIngs(a => a.map((y, j) => (j === i ? { ...y, amount: v } : y)));
+                      }} />
+                  </View>
+                </View>
+              ))}
+              <View className="fill-add" hoverClass="btn-hover"
+                onClick={() => setMIngs(a => [...a, { name: "", amount: "", grams: null }])}>＋ 再加一行食材</View>
+              <View className="f">步骤（一行一步，空行不算）</View>
+              {mSteps.map((s, i) => (
+                <View key={i} className="fillrow">
+                  <Textarea className="ta fillstep" placeholderClass="ph" autoHeight maxlength={-1}
+                    placeholder={`第 ${i + 1} 步`} value={s}
+                    onInput={e => {
+                      const v = e.detail.value;
+                      setMSteps(a => a.map((y, j) => (j === i ? v : y)));
+                    }} />
+                </View>
+              ))}
+              <View className="fill-add" hoverClass="btn-hover"
+                onClick={() => setMSteps(a => [...a, ""])}>＋ 再加一步</View>
+            </ScrollView>
+            <View className={`btn fillgo ${mSaving ? "disabled" : ""}`} hoverClass="btn-hover"
+              onClick={manualSave}>{mSaving ? "保存中…" : "补好了，保存"}</View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

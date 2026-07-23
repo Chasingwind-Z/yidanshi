@@ -22,7 +22,9 @@ export default function Order() {
   const [from, setFrom] = useState<string>(() => (Taro.getStorageSync("guest_from") as string) || "");
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
-  const [sentNames, setSentNames] = useState<string[] | null>(null); // 非 null = 显示传旨成功态
+  // 传旨回执（用服务端回执渲染，不再用本地列表）：ok:false = 点的菜全被厨房收回
+  const [receipt, setReceipt] = useState<{ ok: boolean; accepted: string[]; dropped: string[] } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [coverErr, setCoverErr] = useState<Record<string, boolean>>({});
   const failCover = (id: string) => setCoverErr(m => (m[id] ? m : { ...m, [id]: true }));
 
@@ -77,16 +79,42 @@ export default function Order() {
     }
     setSending(true);
     try {
-      await api.guestOrder(token, who, note.trim(),
-        pickedIds.map(id => ({ id, note: picked[id].trim() })));
+      const r = await api.guestOrder(token, who, note.trim(),
+        pickedIds.map(id => ({ id, note: picked[id].trim(), name: dishes!.find(d => d.id === id)?.name })));
       Taro.setStorageSync("guest_from", who);
-      setSentNames(pickedIds.map(id => dishes!.find(d => d.id === id)?.name || ""));
-      setPicked({});
-      setNote("");
+      // 成功态按服务端回执渲染：accepted 才是真进了厨房的；dropped 如实相告
+      setReceipt({ ok: r.ok, accepted: r.accepted.map(a => a.name), dropped: r.dropped });
+      if (r.ok) {
+        setPicked({});
+        setNote("");
+      }
     } catch (e) {
       toastErr(e, "没传出去，再试一次");
     } finally {
       setSending(false);
+    }
+  }
+
+  // 点的菜全被收回时的出路：重拉菜单，选中项里已下架的一并清掉
+  async function refreshMenu() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const { categories, recipes } = await api.guestMenu(token);
+      const used = [...new Set(recipes.map(r => r.category))];
+      setCats(["全部", ...categories.filter(c => used.includes(c)), ...used.filter(c => !categories.includes(c))]);
+      setDishes(recipes);
+      setCat("全部");
+      setPicked(p => {
+        const next: Record<string, string> = {};  // fromEntries 是 ES2019，老基础库不稳，手拼
+        for (const [pid, pn] of Object.entries(p)) if (recipes.some(d => d.id === pid)) next[pid] = pn;
+        return next;
+      });
+      setReceipt(null);
+    } catch (e) {
+      toastErr(e, "菜单没刷出来，再试一次");
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -127,6 +155,7 @@ export default function Order() {
                   <View className="gd-name">{d.name}</View>
                   <View className="gd-meta">
                     {d.category}
+                    {d.minutes != null && ` · 约 ${d.minutes} 分钟`}
                     {d.kcal != null && ` · ≈${d.kcal} kcal${(d.servings ?? 1) > 1 ? "/餐" : ""}`}
                     {d.times > 0 && ` · 做过 ${d.times} 回`}
                     {d.rating != null && ` · ★${d.rating.toFixed(1)}`}
@@ -169,16 +198,31 @@ export default function Order() {
         </View>
       </View>
 
-      {sentNames !== null && (
+      {receipt !== null && (
         <View className="sentmask" catchMove>
-          <View className="papercard boxline sentcard">
-            <Text className="seal sentseal">旨</Text>
-            <View className="sent-title">菜单已传到厨房</View>
-            <View className="sent-names">{sentNames.join("、")}</View>
-            <View className="dimtext">主人打开一箪食就能看到啦</View>
-            <View className="btn ghost sent-again" hoverClass="btn-hover"
-              onClick={() => setSentNames(null)}>再点几道</View>
-          </View>
+          {receipt.ok ? (
+            <View className="papercard boxline sentcard">
+              <Text className="seal sentseal">旨</Text>
+              <View className="sent-title">菜单已传到厨房</View>
+              <View className="sent-names">{receipt.accepted.join("、")}</View>
+              {receipt.dropped.length > 0 && (
+                <View className="sent-dropped">
+                  有 {receipt.dropped.length} 道菜被厨房收回啦：{receipt.dropped.join("、")}
+                </View>
+              )}
+              <View className="dimtext">主人打开一箪食就能看到啦</View>
+              <View className="btn ghost sent-again" hoverClass="btn-hover"
+                onClick={() => setReceipt(null)}>再点几道</View>
+            </View>
+          ) : (
+            <View className="papercard boxline sentcard">
+              <View className="sent-title">这几道菜刚被厨房收回了</View>
+              <View className="sent-names">{receipt.dropped.join("、")}</View>
+              <View className="dimtext">再挑挑别的吧</View>
+              <View className={`btn sent-again ${refreshing ? "disabled" : ""}`} hoverClass="btn-hover"
+                onClick={refreshMenu}>{refreshing ? "刷新中…" : "刷新菜单"}</View>
+            </View>
+          )}
         </View>
       )}
     </View>

@@ -13,25 +13,39 @@ const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 function WeekReport() {
   const [r, setR] = useState<Awaited<ReturnType<typeof api.weekreport>> | null>(null);
   useDidShow(() => { api.weekreport().then(setR).catch(() => {}); });
-  if (!r || r.meals === 0) return null;
+  if (!r) return null;
+  // 空周不摆一排 0，只留服务端给的那一句（行为化契约；版式对齐 web Timeline.tsx）
+  if (r.empty) return <View className="papercard weekreport"><View className="wr-p">{r.line}</View></View>;
   return (
     <View className="papercard weekreport">
-      {r.kcal_avg != null && (
-        <View className="wr-p">平均每餐 <Text className="wr-b">≈{r.kcal_avg}</Text> kcal
-          <Text className="dimtext">（{r.meals - (r.uncounted ?? 0)} 餐合计 ≈{r.kcal}{r.uncounted ? `，另 ${r.uncounted} 餐无热量未计入` : ""}）</Text>
-        </View>
-      )}
-      {r.kcal_avg == null && (r.uncounted ?? 0) > 0 && (
-        <View className="wr-p dimtext">本周 {r.uncounted} 餐都没热量，无法给出均值</View>
-      )}
-      <View className="wr-p">蛋白质出现在 <Text className="wr-b">{r.protein_meals}/{r.meals}</Text> 餐 · 蔬菜 <Text className="wr-b">{r.veg_kinds.length}</Text> 种
-        {r.veg_kinds.length > 0 && (
-          <Text className="dimtext">（{r.veg_kinds.slice(0, 6).join("、")}{r.veg_kinds.length > 6 ? "…" : ""}）</Text>
+      <View className="wr-p">开火 <Text className="wr-b">{r.meals}</Text> 次 · <Text className="wr-b">{r.days}</Text> 天
+        {r.delta_meals != null && (
+          <Text className="dimtext">（{r.delta_meals === 0 ? "和上周持平" : `比上周${r.delta_meals > 0 ? "+" : ""}${r.delta_meals}`}）</Text>
         )}
       </View>
-      <View className="wr-p dimtext">{Object.entries(r.categories).map(([c, n]) => `${c}×${n}`).join(" · ")}</View>
+      {r.new_dishes.length > 0 && (
+        <View className="wr-p">新面孔 <Text className="wr-b">{r.new_dishes.length}</Text> 道
+          <Text className="dimtext">（{r.new_dishes.slice(0, 6).join("、")}{r.new_dishes.length > 6 ? "…" : ""}）</Text>
+        </View>
+      )}
+      {r.repeat_top && (
+        <View className="wr-p">回锅之王：<Text className="wr-b">{r.repeat_top.name}</Text>，做了 {r.repeat_top.times} 回</View>
+      )}
+      {r.streak_weeks >= 2 && <View className="wr-p">连续开火 <Text className="wr-b">{r.streak_weeks}</Text> 周了</View>}
+      {/* orders_done=家人点的菜做掉数；别写「翻牌子」——那是随机抽菜功能，撞名会把两件事搅一起 */}
+      {r.orders_done && r.orders_done.count > 0 && (
+        <View className="wr-p">家里点的菜做掉 <Text className="wr-b">{r.orders_done.count}</Text> 道
+          {r.orders_done.froms.length > 0 && <Text className="dimtext">（{r.orders_done.froms.join("、")} 点的）</Text>}
+        </View>
+      )}
+      {r.five_star.length > 0 && (
+        <View className="wr-p">五星高光：<Text className="wr-b">{r.five_star.slice(0, 3).join("、")}</Text>
+          {r.five_star.length > 3 && <Text className="dimtext">　等 {r.five_star.length} 道</Text>}
+        </View>
+      )}
+      {r.photos > 0 && <View className="wr-p">带图 <Text className="wr-b">{r.photos}</Text> 张</View>}
+      {!!r.nutri_note && <View className="wr-p dimtext">{r.nutri_note}</View>}
       {r.tip !== "" && <View className="wr-p tipline">「{r.tip}」</View>}
-      <View className="wr-p dimtext">热量为估算值，看趋势就好</View>
     </View>
   );
 }
@@ -161,7 +175,8 @@ export default function Timeline() {
               <Text className="dimtext">　今日 ≈<Text className={overGoal ? "over" : ""}>{todayKcal}</Text> kcal{goal ? ` / ${goal}` : ""}{overGoal ? " 超了" : ""}</Text>
             )}
             {todayUncounted > 0 && <Text className="dimtext">　{todayUncounted} 餐没热量未计入</Text>}
-            {weekMeals.length > 0 && <Text className="dimtext">　{showReport ? "收起" : "小结 ›"}</Text>}
+            {/* 空周也能点开小结——周报契约的 empty 态会给一句话，不再藏死（对齐 web） */}
+            <Text className="dimtext">　{showReport ? "收起" : "小结 ›"}</Text>
           </Text>
         </View>
       )}

@@ -8,6 +8,7 @@ import { CLOUD_ENV, CLOUDRUN_HTTP_BASE, LOCAL_BASE, SERVICE } from "./config";
 export interface Ingredient { name: string; amount: string; grams?: number | null }
 export interface Recipe {
   id: string; name: string; category: string; cover: string; source: string; created: string;
+  demo?: boolean;  // 示例菜（seed-examples 摆进来的），空盘占位要如实标「示例菜」
   kcal?: number | null; minutes?: number | null; difficulty?: string | null; relaxed?: boolean;
   nutrition?: { kcal: number; protein_g: number; fat_g: number; carb_g: number; covered: number; total: number; per_item?: (number | null)[]; missing?: string[] } | null;
   kcal_effective?: number | null; kcal_whole?: number | null; kcal_source?: string; servings?: number;
@@ -18,7 +19,15 @@ export interface Recipe {
 }
 export interface Order {
   id: string; from: string; note: string; date: string; done: boolean;
+  done_date?: string;  // 做好打勾那天（P0-2 起服务端写入；旧单没有 → 不显示）
   items: { recipe_id: string; name: string; note?: string }[];
+}
+/** 周报（行为化契约，与 web 一致）：empty:true 时只渲染 line 一句；可选行有则显示、无则整行不出 */
+export interface WeekReport {
+  empty: boolean; line: string; meals: number; days: number; delta_meals: number | null;
+  new_dishes: string[]; repeat_top: { name: string; times: number } | null; streak_weeks: number;
+  orders_done: { count: number; froms: string[] } | null; five_star: string[]; photos: number;
+  nutri_note: string | null; tip: string;
 }
 /** 每日荐（规则版，主人接口）：0-2 条；客人 401 → 页面整体不渲染 */
 export interface Suggestion { recipe_id: string; name: string; reason: string }
@@ -236,10 +245,7 @@ export const api = {
   ingredientNames: () => request<{ names: string[]; defaults: Record<string, number> }>("/api/ingredient-names"),
   pantry: () => request<{ items: string[] }>("/api/pantry"),
   savePantry: (items: string[]) => request<{ items: string[] }>("/api/pantry", "PUT", { items }),
-  weekreport: () => request<{
-    meals: number; kcal: number; uncounted?: number; kcal_avg: number | null; protein_meals: number;
-    veg_kinds: string[]; categories: Record<string, number>; tip: string;
-  }>("/api/weekreport"),
+  weekreport: () => request<WeekReport>("/api/weekreport"),
   meals: () => request<Meal[]>("/api/meals"),
   addMeal: (m: object) => request<Meal>("/api/meals", "POST", m),
   updateMeal: (id: string, patch: object) => request<Meal>(`/api/meals/${id}`, "PUT", patch),
@@ -248,13 +254,19 @@ export const api = {
   guestLink: (reset = false) => request<{ token: string }>(`/api/guest-link${reset ? "?reset=true" : ""}`, "POST"),
   guestMenu: (t: string) =>
     request<{ categories: string[]; recipes: GuestDish[] }>(`/api/guest/menu?t=${encodeURIComponent(t)}`),
-  guestOrder: (t: string, from: string, note: string, items: { id: string; note: string }[]) =>
-    request<{ ok: boolean }>("/api/guest/order", "POST", { t, from, note, items }),
+  // items 带 name：菜若已被主人收回，服务端 dropped 里才能回显菜名而不是裸 id
+  guestOrder: (t: string, from: string, note: string, items: { id: string; note: string; name?: string }[]) =>
+    request<{ ok: boolean; accepted: { recipe_id: string; name: string; note: string }[]; dropped: string[] }>(
+      "/api/guest/order", "POST", { t, from, note, items }),
   orders: () => request<Order[]>("/api/orders"),
   orderDone: (id: string, done = true) => request<Order>(`/api/orders/${id}`, "PUT", { done }),
   shopping: () => request<{ items: ShopItem[] }>("/api/shopping"),
   saveShopping: (items: ShopItem[]) => request<{ items: ShopItem[] }>("/api/shopping", "PUT", { items }),
   aiStatus: () => request<AiStatus>("/api/ai/status"),
+  /** 贴教程文案/链接 → LLM 整理成结构化菜谱（参数形状与 web/src/api.ts 一致） */
+  aiExtract: (text: string, source: string, url?: string) =>
+    request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string }>(
+      "/api/ai/extract", "POST", { text, source, url }),
   config: () => request<ConfigPayload>("/api/config"),
   saveConfig: (c: object) => request<ConfigPayload>("/api/config", "PUT", c),
 };

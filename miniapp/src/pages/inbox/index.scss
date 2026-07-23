@@ -43,8 +43,18 @@
   padding-top: 8px;
   border-top: 1px dashed var(--line-hair);
 }
-.o-donebtn {
+.o-acts {
   margin-top: 12px;
+}
+/* 并入清单是次级动作：ghost 小字，别和「做好了」抢戏 */
+.o-shopbtn {
+  font-size: 14px;
+  color: var(--dim);
+}
+.o-donedate {
+  color: var(--dim);
+  font-size: 12.5px;
+  margin-top: 8px;
 }
 .alldone {
   text-align: center;
