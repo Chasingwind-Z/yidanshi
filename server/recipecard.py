@@ -273,6 +273,11 @@ def render(rid: str) -> bytes:
     d.rectangle([26, 26, W - 27, y - 27], outline=FRAME, width=3)
     d.rectangle([38, 38, W - 39, y - 39], outline=HAIR, width=1)
 
+    # 出图放大到 1440 宽（zzf 真机反馈 1080 偏小）：字号常量散布 16 处不宜整体重排，
+    # LANCZOS 1.33x 的文字软化在手机/小红书二压后不可察，换来一档更"大"的成图
+    out_w = 1440
+    img = img.resize((out_w, int(img.height * out_w / W)), Image.LANCZOS)
+
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()

@@ -365,3 +365,9 @@ body {
   color: var(--dim);
   margin-bottom: 8px;
 }
+
+/* 晒图弹层的显式保存按钮（长按不显眼，截屏分辨率折半——正经按钮存原图） */
+.postersheet-save {
+  margin: 12px 16px 4px;
+  width: auto;
+}

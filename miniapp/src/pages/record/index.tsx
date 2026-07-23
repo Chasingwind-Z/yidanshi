@@ -189,6 +189,23 @@ export default function Record() {
           return;
         }
       } catch { /* 回填是锦上添花，失败不挡路 */ }
+      // 新菜是"空壳"（只有名字+分类）：盖完章搭一座桥去补做法——不打断记录（可跳过），
+      // 但别让人不知道去哪补（zzf 真机反馈：记餐时找不到写做法的地方）
+      if (!recipeId && meal.recipe_id) {
+        afterStamp(async () => {
+          const { confirm } = await Taro.showModal({
+            title: "新菜已立档",
+            content: "做法可以贴教程链接让 AI 录，或手动补几笔——现在去？",
+            confirmText: "去补做法",
+            cancelText: "下次再说",
+          });
+          done();
+          if (confirm) {
+            Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(meal.recipe_id)}` });
+          }
+        });
+        return;
+      }
       afterStamp(done);  // 章落定再走原有的重置/跳转
     } catch (e) {
       toastErr(e);
