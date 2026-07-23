@@ -97,6 +97,21 @@ def whoami(request: Request):
 
 # ---------- 设置 ----------
 
+def _font_health() -> dict:
+    """渲染字体自诊断：自带字体文件在不在 + _font 实际解析到哪个字体（名字）。"""
+    try:
+        from . import monthcard
+        f = monthcard._font(20, index=6)
+        try:
+            name = "/".join(f.getname())
+        except Exception:  # noqa: BLE001
+            name = type(f).__name__
+        return {"bundled_exists": Path(monthcard._BUNDLED).exists(),
+                "bundled_path": monthcard._BUNDLED, "resolved": name}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"{type(e).__name__}: {str(e)[:150]}"}
+
+
 def _config_payload() -> dict:
     # 存储挂了也要能开口——否则 DB 一断 /api/config 先 500，自诊断字段反而看不到。
     # 每个碰数据库的调用都单独兜住（backend_status 内部也读 config，同样会因 DB 断而抛）。
@@ -113,6 +128,7 @@ def _config_payload() -> dict:
             "status": status,
             "owner_token": bool(OWNER_TOKEN),
             "storage": storage.health(),  # 云上排障：存储模式 + 数据库连通性（主人可见）
+            "font": _font_health(),  # 云上排障：自带字体是否进镜像/实际解析到谁（豆腐块事故用）
             "secrets": {e: bool(os.environ.get(e)) for e in envs}}
 
 
