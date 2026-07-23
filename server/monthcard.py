@@ -18,20 +18,20 @@ SERIF = "/System/Library/Fonts/Songti.ttc"
 
 
 def _font(size: int, index: int = 0):
-    for path in (SERIF, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-                 "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"):
-        try:
-            return ImageFont.truetype(path, size, index=index)
-        except OSError:
-            continue
-    # 兜底：全盘扫任意 CJK 字体——发行版的字体文件名/路径不齐（真机豆腐块事故的保险丝）
+    # index 是「字体集内第几个字面」——mac Songti.ttc 有 7 个面（调用方会传 1/6），
+    # 云上的 Noto .ttc 面数不同：请求的面不存在时必须退回 0 号面，否则一路漏到豆腐块
+    #（真机教程卡全 tofu 事故的第二根保险丝；第一根是 Dockerfile 装字体）。
+    paths = [SERIF, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+             "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"]
     import glob as _glob
-    for path in sorted(_glob.glob("/usr/share/fonts/**/*CJK*.tt[cf]", recursive=True)
-                       + _glob.glob("/usr/share/fonts/**/*cjk*.tt[cf]", recursive=True)):
-        try:
-            return ImageFont.truetype(path, size, index=index)
-        except OSError:
-            continue
+    paths += sorted(_glob.glob("/usr/share/fonts/**/*CJK*.tt[cf]", recursive=True)
+                    + _glob.glob("/usr/share/fonts/**/*cjk*.tt[cf]", recursive=True))
+    for path in paths:
+        for idx in (index, 0) if index else (0,):
+            try:
+                return ImageFont.truetype(path, size, index=idx)
+            except OSError:
+                continue
     return ImageFont.load_default(size)  # 真没有字体时的最后兜底（中文会是豆腐块）
 
 
