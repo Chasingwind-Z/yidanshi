@@ -4,11 +4,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 中文字体：容器裸奔时 PIL 渲染教程卡/长图/月结卡全是豆腐块（真机实测）。
-# Noto Serif CJK（思源宋体）路径与 monthcard._font 回退链吻合；apt 走腾讯镜像
-RUN sed -i 's|deb.debian.org|mirrors.cloud.tencent.com|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk fonts-noto-cjk-extra \
-    && rm -rf /var/lib/apt/lists/*
+# 中文字体走仓库自带的思源宋 SC（server/assets/fonts/，OFL 许可）——曾用 apt 装
+# fonts-noto-cjk：200MB 拖慢每次构建且镜像抖动会整次失败，已弃用
 
 # 依赖层单独 COPY，代码改动不重装依赖；腾讯镜像源（云托管构建机在腾讯云内，公网也可用）
 COPY server/requirements-cloud.txt server/requirements-cloud.txt

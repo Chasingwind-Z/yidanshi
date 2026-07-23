@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -17,21 +18,30 @@ CN_MONTH = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"
 SERIF = "/System/Library/Fonts/Songti.ttc"
 
 
+# 仓库自带思源宋 SC（可变字体，OFL 许可随 OFL.txt 分发）：云容器/任何 Linux 不再依赖
+# apt 装字体（200MB 全家桶拖慢构建还会因镜像抖动整次失败——真机豆腐块事故的最终解）。
+_BUNDLED = str(Path(__file__).parent / "assets" / "fonts" / "NotoSerifSC.ttf")
+
+
 def _font(size: int, index: int = 0):
-    # index 是「字体集内第几个字面」——mac Songti.ttc 有 7 个面（调用方会传 1/6），
-    # 云上的 Noto .ttc 面数不同：请求的面不存在时必须退回 0 号面，否则一路漏到豆腐块
-    #（真机教程卡全 tofu 事故的第二根保险丝；第一根是 Dockerfile 装字体）。
-    paths = [SERIF, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    # index 是「字体集内第几个字面」，mac Songti.ttc 专用（1=SC Bold，6=SC Regular）。
+    # 自带的 Noto 是单面可变字体：面号退回 0，再按 index 的意图拨字重轴（1/3=Bold）。
+    paths = [SERIF, _BUNDLED, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
              "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"]
-    import glob as _glob
-    paths += sorted(_glob.glob("/usr/share/fonts/**/*CJK*.tt[cf]", recursive=True)
-                    + _glob.glob("/usr/share/fonts/**/*cjk*.tt[cf]", recursive=True))
     for path in paths:
         for idx in (index, 0) if index else (0,):
             try:
-                return ImageFont.truetype(path, size, index=idx)
+                f = ImageFont.truetype(path, size, index=idx)
             except OSError:
                 continue
+            try:  # 可变字体默认落在最细的 ExtraLight，得拨到 Regular/Bold；静态字体这里抛 OSError，忽略
+                names = [n.decode() if isinstance(n, bytes) else n for n in f.get_variation_names()]
+                want = "Bold" if index in (1, 3) else "Regular"
+                if want in names:
+                    f.set_variation_by_name(want)
+            except OSError:
+                pass
+            return f
     return ImageFont.load_default(size)  # 真没有字体时的最后兜底（中文会是豆腐块）
 
 
