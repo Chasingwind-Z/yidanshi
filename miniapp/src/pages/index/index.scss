@@ -30,6 +30,15 @@
 }
 
 /* 翻牌子入口：朱砂描边 pill（描边=可点/强调，正文不喧宾夺主） */
+/* 素印「设」：空心方章，与朱印「箪」一朱一素（齿轮是 App 语言，纸面上违和） */
+.actseal {
+  border-radius: 7px !important;
+  font-family: var(--serif);
+  font-size: 16px !important;
+  font-weight: 700;
+  color: var(--dim) !important;
+}
+
 /* 家里点菜横幅：只在有待做单时出现（实心朱砂，比翻牌胶囊更响——这是新消息） */
 .orderbar {
   display: flex;
@@ -55,59 +64,42 @@
   font-size: 17px;
 }
 
-.fanpill {
+/* 「今天吃什么」合并卡：今日荐 + 翻牌子同题合一。
+   朱砂纪律：只有可点的菜名/翻牌入口/理由用朱砂，小标走 dim 楷体 */
+.tdycard {
+  padding: 10px 14px 12px;
+  margin-bottom: 16px;
+}
+.tdy-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 0 16px;
-  margin-bottom: 16px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: transparent;
-  box-sizing: border-box;
+  justify-content: space-between;
 }
-.fanpill.on {
-  background: rgba(176, 57, 43, 0.06);
-}
-.fanpill-ico {
-  font-size: 18px;
-}
-.fanpill-txt {
-  flex: 1;
-  color: var(--accent);
-  font-family: var(--serif);
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 1px;
-}
-.fanpill-caret {
-  color: var(--accent);
-  font-size: 11px;
-}
-
-/* 今日荐：安静的一条建议（规则版每日荐），不弹窗不打扰。
-   朱砂纪律：只有可点的菜名和朱批理由用朱砂，小标走 dim 楷体 */
-.sugcard {
-  display: flex;
-  gap: 12px;
-  padding: 10px 14px;
-  margin-bottom: 16px;
-}
-.sug-t {
+.tdy-t {
   font-family: var(--serif);
   font-size: 13px;
   color: var(--dim);
   letter-spacing: 2px;
-  flex-shrink: 0;
-  padding-top: 3px;
+}
+.tdy-flip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 14px;
+}
+.tdy-caret {
+  font-size: 10px;
 }
 .sug-list {
-  flex: 1;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-top: 2px;
 }
 .sug-item {
   line-height: 1.6;
@@ -124,6 +116,46 @@
   font-family: var(--serif);
   font-size: 13px;
   opacity: 0.85;
+}
+
+/* 翻牌结果行 + 划掉重抽 */
+.drawrow {
+  margin-top: 6px;
+}
+.draw-name {
+  color: var(--accent);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 19px;
+}
+.draw-acts {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.minibtn {
+  flex: 1;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--line-box);
+  color: var(--dim);
+  font-size: 13.5px;
+}
+.minibtn.solid {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* 条件面板嵌进合并卡（原独立 fanpanel 的内嵌版） */
+.fanpanel-in {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-hair);
 }
 
 .searchbar {

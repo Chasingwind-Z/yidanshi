@@ -295,13 +295,20 @@ def put_pantry(body: dict):
 
 @app.get("/api/random")
 def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: int = 0,
-                difficulty: str = "", use_pantry: int = 0):
+                difficulty: str = "", use_pantry: int = 0, exclude: str = ""):
     """翻牌子：avoid_days=N 排除最近 N 天做过的；max_minutes=M 只要 M 分钟内能做的；
     difficulty=简单 只要省事的；use_pantry=1 优先冰箱里有食材的菜。
-    条件内没菜时逐级放宽并带 relaxed 标记，绝不空手而归。"""
+    exclude=id1,id2 划掉重抽（用户明说不想吃的，硬排除不放宽）。
+    条件内没菜时逐级放宽并带 relaxed 标记，绝不空手而归——唯 exclude 例外：
+    全被划掉时如实说翻完了，别把人家刚划掉的又端回去。"""
     rs = [r for r in storage.list_recipes() if category in (None, "", r["category"])]
     if not rs:
         raise HTTPException(404, "菜单还是空的")
+    skipped = {s.strip() for s in exclude.split(",") if s.strip()}
+    if skipped:
+        rs = [r for r in rs if r["id"] not in skipped]
+        if not rs:
+            raise HTTPException(404, "今天的牌都翻完啦")
     relaxed = False
     if avoid_days > 0:
         cutoff = (date.today() - timedelta(days=avoid_days)).isoformat()

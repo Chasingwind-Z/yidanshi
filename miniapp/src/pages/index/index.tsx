@@ -11,6 +11,11 @@ function readFlag(key: string, def: boolean): boolean {
   return v === "" ? def : v === "1";
 }
 
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function Index() {
   const [cats, setCats] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
@@ -29,27 +34,61 @@ export default function Index() {
   const [quick30, setQuick30] = useState(() => readFlag("fan_quick30", false));
   const [easy, setEasy] = useState(() => readFlag("fan_easy", false));
   const [pantryFirst, setPantryFirst] = useState(() => readFlag("fan_pantry", false));
+  // 划掉重抽：翻到不想吃的划掉，当日不再出现（跨天自动洗牌）
+  const [drawn, setDrawn] = useState<Recipe | null>(null);
+  const [skipped, setSkipped] = useState<string[]>(() => {
+    try {
+      const o = JSON.parse((Taro.getStorageSync("fan_skip") as string) || "null");
+      return o && o.date === todayStr() ? o.ids : [];
+    } catch { return []; }
+  });
 
-  function flip() {
+  function saveSkipped(ids: string[]) {
+    setSkipped(ids);
+    Taro.setStorageSync("fan_skip", JSON.stringify({ date: todayStr(), ids }));
+  }
+
+  function flip(excludeIds?: string[]) {
     Taro.setStorageSync("fan_avoid7", avoid7 ? "1" : "0");
     Taro.setStorageSync("fan_quick30", quick30 ? "1" : "0");
     Taro.setStorageSync("fan_easy", easy ? "1" : "0");
     Taro.setStorageSync("fan_pantry", pantryFirst ? "1" : "0");
-    api.random(q.trim() ? "" : cat, {
+    // 全食单范围翻：合并卡在分类栏之上，问的是全局的「今天吃什么」——
+    // 若跟着侧栏分类走，单菜分类划掉一道就"翻完"，且用户根本没意识到被圈了范围
+    api.random("", {
       avoidDays: avoid7 ? 7 : 0,
       maxMinutes: quick30 ? 30 : 0,
       difficulty: easy ? "简单" : "",
       usePantry: pantryFirst,
+      exclude: excludeIds ?? skipped,
     })
       .then(r => {
-        Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(r.id)}` }).then(() => {
-          // 后端条件内没菜时会逐级放宽并带 relaxed，翻过去时告诉用户一声，别让人以为条件生效了
-          if (r.relaxed) {
-            Taro.showToast({ title: "没找到完全符合条件的，放宽了筛选", icon: "none", duration: 2500 });
-          }
-        });
+        setDrawn(r);
+        // 后端条件内没菜时会逐级放宽并带 relaxed，告诉用户一声，别让人以为条件生效了
+        if (r.relaxed) {
+          Taro.showToast({ title: "没找到完全符合条件的，放宽了筛选", icon: "none", duration: 2500 });
+        }
       })
-      .catch(() => Taro.showToast({ title: "食单还空着，先记一餐吧", icon: "none" }));
+      .catch(e => {
+        if (((e as Error).message || "").includes("翻完")) {
+          Taro.showToast({ title: "今天的牌都翻完啦，已重新洗牌", icon: "none", duration: 2500 });
+          saveSkipped([]);
+          setDrawn(null);
+        } else {
+          Taro.showToast({ title: "食单还空着，先记一餐吧", icon: "none" });
+        }
+      });
+  }
+
+  function skipDrawn() {
+    if (!drawn) return;
+    const ids = [...skipped, drawn.id];
+    saveSkipped(ids);
+    flip(ids);
+  }
+
+  function goDrawn() {
+    if (drawn) Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(drawn.id)}` });
   }
 
   function load() {
@@ -82,9 +121,11 @@ export default function Index() {
   }
 
   const kw = q.trim();
+  // 菜少（≤5 道）时不摆分类侧栏——几道菜分五格，空转
+  const fewDishes = recipes.length <= 5;
   const shown = kw
     ? recipes.filter(r => r.name.includes(kw) || r.category.includes(kw) || r.ingredients.some(i => i.name.includes(kw)))
-    : recipes.filter(r => r.category === cat);
+    : fewDishes ? recipes : recipes.filter(r => r.category === cat);
 
   const toggles: { label: string; on: boolean; set: (v: boolean) => void }[] = [
     { label: "最近 7 天没做过的", on: avoid7, set: setAvoid7 },
@@ -101,8 +142,9 @@ export default function Index() {
           <View className="h1">我的食单</View>
         </View>
         <View className="headacts">
-          <View className="act" hoverClass="btn-hover"
-            onClick={() => Taro.navigateTo({ url: "/pages/settings/index" })}>⚙</View>
+          {/* 素印「设」：与左侧朱印「箪」一朱一素——齿轮是 App 语言，不是纸面语言 */}
+          <View className="act actseal" hoverClass="btn-hover"
+            onClick={() => Taro.navigateTo({ url: "/pages/settings/index" })}>设</View>
         </View>
       </View>
 
@@ -133,25 +175,24 @@ export default function Index() {
               <Text className="orderbar-go">›</Text>
             </View>
           )}
-          <View className={`fanpill ${fan ? "on" : ""}`} hoverClass="btn-hover" onClick={() => setFan(f => !f)}>
-            <Text className="fanpill-ico">🎴</Text>
-            <Text className="fanpill-txt">翻牌子 · 今天吃什么</Text>
-            <Text className="fanpill-caret">{fan ? "▲" : "▼"}</Text>
-          </View>
-          {fan && (
-            <View className="papercard boxline fanpanel">
-              {toggles.map(t => (
-                <View key={t.label} className="fanrow" onClick={() => t.set(!t.on)}>
-                  <View className={`checkbox ${t.on ? "on" : ""}`}>{t.on ? "✓" : ""}</View>
-                  <Text>{t.label}</Text>
-                </View>
-              ))}
-              <View className="btn" hoverClass="btn-hover" onClick={flip}>翻牌子！</View>
+          {/* 「今天吃什么」合并卡：今日荐（安静躺着）+ 翻牌子（主动出击）同题合一 */}
+          <View className="papercard tdycard">
+            <View className="tdy-head">
+              <Text className="tdy-t">今天吃什么</Text>
+              <View className="tdy-flip" hoverClass="btn-hover" onClick={() => setFan(f => !f)}>
+                <Text>🎴 翻牌子</Text>
+                <Text className="tdy-caret">{fan ? "▲" : "▼"}</Text>
+              </View>
             </View>
-          )}
-          {sug.length > 0 && (
-            <View className="papercard sugcard">
-              <Text className="sug-t">今日荐</Text>
+            {drawn ? (
+              <View className="drawrow">
+                <Text className="draw-name" onClick={goDrawn}>{drawn.name}</Text>
+                <View className="draw-acts">
+                  <View className="minibtn solid" hoverClass="btn-hover" onClick={goDrawn}>看做法 ›</View>
+                  <View className="minibtn" hoverClass="btn-hover" onClick={skipDrawn}>不想吃，换一张</View>
+                </View>
+              </View>
+            ) : sug.length > 0 && (
               <View className="sug-list">
                 {sug.map(s => (
                   <View className="sug-item" key={s.recipe_id}>
@@ -163,10 +204,23 @@ export default function Index() {
                   </View>
                 ))}
               </View>
-            </View>
-          )}
+            )}
+            {fan && (
+              <View className="fanpanel-in">
+                {toggles.map(t => (
+                  <View key={t.label} className="fanrow" onClick={() => t.set(!t.on)}>
+                    <View className={`checkbox ${t.on ? "on" : ""}`}>{t.on ? "✓" : ""}</View>
+                    <Text>{t.label}</Text>
+                  </View>
+                ))}
+                <View className="btn" hoverClass="btn-hover" onClick={() => flip()}>
+                  {drawn ? "再翻一张！" : "翻牌子！"}
+                </View>
+              </View>
+            )}
+          </View>
           <View className="menu">
-            {!kw && (
+            {!kw && !fewDishes && (
               <View className="cats">
                 {cats.map(c => (
                   <View key={c} className={`catbtn ${c === cat ? "on" : ""}`} hoverClass="btn-hover"

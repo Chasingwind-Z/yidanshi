@@ -222,13 +222,14 @@ export const api = {
   saveRecipe: (r: Partial<Recipe>) =>
     request<Recipe>(r.id ? `/api/recipes/${r.id}` : "/api/recipes", r.id ? "PUT" : "POST", r),
   deleteRecipe: (id: string) => request<{ ok: boolean }>(`/api/recipes/${id}`, "DELETE"),
-  random: (category?: string, opts?: { avoidDays?: number; maxMinutes?: number; difficulty?: string; usePantry?: boolean }) =>
+  random: (category?: string, opts?: { avoidDays?: number; maxMinutes?: number; difficulty?: string; usePantry?: boolean; exclude?: string[] }) =>
     request<Recipe>(`/api/random${qs({
       category,
       avoid_days: opts?.avoidDays || undefined,
       max_minutes: opts?.maxMinutes || undefined,
       difficulty: opts?.difficulty || undefined,
       use_pantry: opts?.usePantry ? 1 : undefined,
+      exclude: opts?.exclude?.length ? opts.exclude.join(",") : undefined,
     })}`),
   suggest: () => request<{ suggestions: Suggestion[]; date: string }>("/api/suggest"),
   ingredient: (name: string) => request<IngInfo>(`/api/ingredient/${encodeURIComponent(name)}`),
