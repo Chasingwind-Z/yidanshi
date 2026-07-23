@@ -23,21 +23,14 @@ DIM = (141, 130, 113)
 RED = (176, 57, 43)
 HAIR = (213, 202, 180)          # 纸面细线
 FRAME = (196, 183, 158)         # 文武边外框
-SERIF = "/System/Library/Fonts/Songti.ttc"
-
 STYLES = {"family": "家宴食单", "couple": "二人小灶", "solo": "一人食帖"}
 DIRECT_MAX, PAGE_SIZE = 18, 12  # 竞品验证值：≤18 道一张整图，多则每页 12 道
 CN_DIGIT = "〇一二三四五六七八九"
 
-
-def _font(size: int, index: int = 0):
-    for path in (SERIF, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-                 "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"):
-        try:
-            return ImageFont.truetype(path, size, index=index)
-        except OSError:
-            continue
-    return ImageFont.load_default(size)  # 非 mac/无中文字体时兜底（字形较糙但可用）
+# 字体统一走 monthcard._font（唯一出口：mac Songti → 仓库自带思源宋 → 系统字体）。
+# 教训：这里曾有一份 _font 拷贝——修字体只修了 monthcard，教程卡/长图照旧豆腐，
+# 且诊断接口测的是 monthcard 的那份，绿灯掩护了坏渲染。渲染字体逻辑只许有一份。
+from .monthcard import _font  # noqa: E402
 
 
 def _song(size: int, bold: bool = False):
