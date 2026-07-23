@@ -77,18 +77,31 @@ export async function request<T>(path: string, method: Method = "GET", data?: ob
     const call = (Taro.cloud as unknown as {
       callContainer: (opt: object) => Promise<ContainerResp>;
     }).callContainer;
-    let res: ContainerResp;
-    try {
-      res = await call({
-        config: { env: CLOUD_ENV },
-        path,
-        method,
-        data,
-        header: { "X-WX-SERVICE": SERVICE, "content-type": "application/json" },
-      });
-    } catch (e) {
-      throw new Error((e as { errMsg?: string })?.errMsg || "网络请求失败");
+    // 云托管缩零冷启动：容器"生火"要十几秒，首次请求常撞 102002 超时。
+    // 只对 GET 自动重试（幂等）；POST/PUT/DELETE 不重试——传旨/记餐重发会重复提交。
+    const attempts = method === "GET" ? 3 : 1;
+    let res: ContainerResp | null = null;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        res = await call({
+          config: { env: CLOUD_ENV },
+          path,
+          method,
+          data,
+          header: { "X-WX-SERVICE": SERVICE, "content-type": "application/json" },
+        });
+        break;
+      } catch (e) {
+        const msg = (e as { errMsg?: string })?.errMsg || "";
+        if (i < attempts - 1 && /102002|超时|timeout/i.test(msg)) {
+          if (i === 0) Taro.showToast({ title: "厨房生火中，稍等…", icon: "none", duration: 3500 });
+          await new Promise(r => setTimeout(r, 3500));
+          continue;
+        }
+        throw new Error(msg || "网络请求失败");
+      }
     }
+    if (!res) throw new Error("网络请求失败");
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw new Error(detailMsg(res.data) || `请求失败（${res.statusCode}）`);
     }
