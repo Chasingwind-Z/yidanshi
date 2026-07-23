@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
 import { Image, Text, View } from "@tarojs/components";
 import { api, absUrl, toastErr, type IngInfo, type Recipe } from "../../api";
-import { Loading } from "../../components/common";
+import { Loading, PosterSheet } from "../../components/common";
+import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
+
+const isWeapp = process.env.TARO_ENV === "weapp";
 
 const EMOJI: [RegExp, string][] = [
   [/蛋/, "🥚"], [/玉米/, "🌽"], [/番茄|西红柿/, "🍅"], [/土豆|红薯|薯/, "🥔"], [/萝卜/, "🥕"],
@@ -133,6 +136,7 @@ export default function RecipePage() {
   const [r, setR] = useState<Recipe | null>(null);
   const [missing404, setMissing404] = useState(false);
   const [ingSheet, setIngSheet] = useState<SheetArgs | null>(null);
+  const [posterUrl, setPosterUrl] = useState("");
   // 云端迁移后，illust / 封面 URL 可能指向不存在的 COS 对象（只有 demo 菜生成过插画）：
   // 记下哪些图 404，当作「没插画」处理，别显示裂图
   const [imgErr, setImgErr] = useState<Record<string, boolean>>({});
@@ -146,6 +150,22 @@ export default function RecipePage() {
     // record 是 tabBar 页，switchTab 带不了参数——预选菜谱走 storage
     Taro.setStorageSync("record_preset", id);
     Taro.switchTab({ url: "/pages/record/index" });
+  }
+
+  // 教程卡：服务端 PIL 渲染的竖版长图。<Image> 的镜像请求带不上 openid 头，
+  // 走 guest token 的 query 放行通道（?t=…）；weapp 需要公网访问域名才能直连图。
+  async function openCard() {
+    const base = isWeapp ? CLOUDRUN_HTTP_BASE : LOCAL_BASE;
+    if (!base) {
+      Taro.showToast({ title: "云端才支持导出（未配公网访问域名）", icon: "none" });
+      return;
+    }
+    try {
+      const { token } = await api.guestLink();
+      setPosterUrl(`${base}/api/recipecard/${encodeURIComponent(id)}?t=${encodeURIComponent(token)}`);
+    } catch (e) {
+      toastErr(e, "教程卡没能生成");
+    }
   }
 
   async function delRecipe() {
@@ -283,9 +303,13 @@ export default function RecipePage() {
       )}
       <View className="record-cta">
         <View className="btn" hoverClass="btn-hover" onClick={goRecord}>做完了？记一餐</View>
+        {hasTutorial && (
+          <View className="btn ghost" hoverClass="btn-hover" onClick={openCard}>教程卡（长按可存图）</View>
+        )}
         <View className="btn ghost danger" hoverClass="btn-hover" onClick={delRecipe}>删除这道菜</View>
       </View>
       {ingSheet && <IngredientSheet {...ingSheet} onClose={() => setIngSheet(null)} />}
+      {posterUrl !== "" && <PosterSheet url={posterUrl} title="插画教程卡" onClose={() => setPosterUrl("")} />}
     </View>
   );
 }

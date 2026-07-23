@@ -1,5 +1,6 @@
-// 页面通用小件：加载态 / 失败重试（对齐 Web R17-j）/ 五星评分条
-import { Text, View } from "@tarojs/components";
+// 页面通用小件：加载态 / 失败重试（对齐 Web R17-j）/ 五星评分条 / 晒图弹层
+import { useState } from "react";
+import { Image, ScrollView, Text, View } from "@tarojs/components";
 
 export function Loading({ text = "加载中" }: { text?: string }) {
   return (
@@ -17,6 +18,35 @@ export function ErrRetry({ what, err, onRetry }: { what: string; err: string; on
       <Text>{what}没能读出来</Text>
       <View className="dimtext err-detail">{err}</View>
       <View className="btn retry-btn" onClick={onRetry}>重试</View>
+    </View>
+  );
+}
+
+/** 晒图弹层（教程卡 / 纸上食单共用）：加载服务端渲染的 PNG 长图，
+ *  weapp 里长按走 Image 原生菜单（保存 / 发给朋友），h5 里浏览器长按同理。 */
+export function PosterSheet({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  const [state, setState] = useState<"loading" | "ok" | "err">("loading");
+  return (
+    <View className="postscrim" catchMove onClick={onClose}>
+      <View className="postersheet" onClick={e => e.stopPropagation()}>
+        <View className="postersheet-head">
+          <Text className="postersheet-title">{title}</Text>
+          <View className="postersheet-close" onClick={onClose}>✕</View>
+        </View>
+        <ScrollView scrollY className="postersheet-scroll">
+          {state === "loading" && <Loading text="研墨铺纸中" />}
+          {state === "err" && (
+            <View className="empty">
+              <View className="empty-ico">🍚</View>
+              <Text>图没能取回来，稍后再试</Text>
+            </View>
+          )}
+          <Image src={url} mode="widthFix" showMenuByLongpress className="postersheet-img"
+            style={state === "err" ? { display: "none" } : undefined}
+            onLoad={() => setState("ok")} onError={() => setState("err")} />
+        </ScrollView>
+        {state === "ok" && <View className="postersheet-hint">长按图片可保存或发给朋友</View>}
+      </View>
     </View>
   );
 }

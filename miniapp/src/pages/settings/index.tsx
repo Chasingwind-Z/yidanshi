@@ -5,11 +5,14 @@ import { useEffect, useState } from "react";
 import Taro, { useShareAppMessage } from "@tarojs/taro";
 import { Button, Input, Text, View } from "@tarojs/components";
 import { api, toastErr, type AiStatus, type ConfigPayload } from "../../api";
-import { Loading } from "../../components/common";
+import { Loading, PosterSheet } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
 
 const isWeapp = process.env.TARO_ENV === "weapp";
+
+/** 纸上食单的三种题签（与 server/menuposter.py STYLES 对应） */
+const POSTER_STYLES: [string, string][] = [["family", "家宴食单"], ["couple", "二人小灶"], ["solo", "一人食帖"]];
 
 function GuestLinkSection({ token, remake }: { token: string; remake: (reset: boolean) => void }) {
   const webBase = isWeapp ? CLOUDRUN_HTTP_BASE : LOCAL_BASE;
@@ -59,6 +62,7 @@ export default function Settings() {
   const [goalKcal, setGoalKcal] = useState("");
   const [saving, setSaving] = useState(false);
   const [token, setToken] = useState("");
+  const [poster, setPoster] = useState<{ url: string; title: string } | null>(null);
 
   const makeToken = (reset: boolean) =>
     api.guestLink(reset).then(d => setToken(d.token)).catch(toastErr);
@@ -77,6 +81,20 @@ export default function Settings() {
     api.aiStatus().then(setStatus).catch(() => {});
     makeToken(false);
   }, []);
+
+  // 纸上食单长图：<Image> 的镜像请求带不上 openid 头，走 guest token 的 query 放行通道
+  function openPoster(style: string, title: string) {
+    const base = isWeapp ? CLOUDRUN_HTTP_BASE : LOCAL_BASE;
+    if (!base) {
+      Taro.showToast({ title: "云端才支持导出（未配公网访问域名）", icon: "none" });
+      return;
+    }
+    if (!token) {
+      Taro.showToast({ title: "口令还在生成，稍等一下", icon: "none" });
+      return;
+    }
+    setPoster({ url: `${base}/api/menuposter?style=${style}&t=${encodeURIComponent(token)}`, title });
+  }
 
   if (!cfg) return <View className="page"><Loading /></View>;
 
@@ -125,6 +143,17 @@ export default function Settings() {
 
       <View className="h2">家人点菜</View>
       <GuestLinkSection token={token} remake={r => makeToken(r)} />
+
+      <View className="h2">纸上食单</View>
+      <View className="hint nomt">整本食单排成一张可晒的竖长图，挑个题签：</View>
+      <View className="row acts-sm">
+        {POSTER_STYLES.map(([style, title]) => (
+          <View key={style} className="btn ghost" hoverClass="btn-hover"
+            onClick={() => openPoster(style, title)}>{title}</View>
+        ))}
+      </View>
+
+      {poster && <PosterSheet url={poster.url} title={poster.title} onClose={() => setPoster(null)} />}
     </View>
   );
 }

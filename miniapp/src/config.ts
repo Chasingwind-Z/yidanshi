@@ -25,4 +25,4 @@ export const LOCAL_BASE = "http://127.0.0.1:18100";
  * 不配时：上传退化为 callContainer 手工拼 multipart（免域名配置，但大图有
  * 请求体积风险，chooseMedia 已用 compressed 压过一道）。
  */
-export const CLOUDRUN_HTTP_BASE = "";
+export const CLOUDRUN_HTTP_BASE = "https://yidanshi-284630-10-1456112658.sh.run.tcloudbase.com";

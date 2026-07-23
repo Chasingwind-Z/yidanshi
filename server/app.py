@@ -52,7 +52,18 @@ async def owner_gate(request: Request, call_next):
         p = request.url.path
         if p.startswith("/api/") and p not in _PUBLIC_API:
             ok = False
-            if OWNER_TOKEN:  # 原有口令逻辑原样保留
+            # 晒图接口（纸上食单/教程卡）是「图」：小程序/浏览器 <Image> 的镜像请求带不上
+            # openid/token 头，放一条 guest token 的 query 通道（?t=…）。t 校验不过或没带
+            # 仍走下面的主人鉴权——不是无条件公开，陌生人白嫖不了。
+            if p == "/api/menuposter" or p.startswith("/api/recipecard/"):
+                t = request.query_params.get("t", "")
+                if t:
+                    try:
+                        gt = _guest_token()  # 定义在本函数之后；请求时才查全局名，无顺序问题
+                    except Exception:  # noqa: BLE001 —— 存储抖动别把鉴权打成 500，回落主人鉴权
+                        gt = ""
+                    ok = bool(gt) and hmac.compare_digest(t.encode("utf-8"), gt.encode("utf-8"))
+            if not ok and OWNER_TOKEN:  # 原有口令逻辑原样保留
                 supplied = (request.headers.get("x-token")
                             or request.cookies.get("yidanshi_token")
                             or request.query_params.get("token", ""))
@@ -809,6 +820,19 @@ def menu_poster(style: str = "family", page: int = 1):
     except (ValueError, LookupError) as e:
         raise HTTPException(404, str(e))
     return Response(png, media_type="image/png", headers={"X-Total-Pages": str(pages)})
+
+
+@app.get("/api/recipecard/{rid}")
+def recipe_card(rid: str):
+    """插画教程卡：单道菜 → 一张竖版可保存分享的教程长卡（PNG，宽 1080 高自适应）。"""
+    from . import recipecard
+    from fastapi.responses import Response
+
+    try:
+        png = recipecard.render(rid)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    return Response(png, media_type="image/png")
 
 
 @app.put("/api/meals/{mid}")
