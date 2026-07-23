@@ -22,8 +22,8 @@ function WeekReport() {
       )}
       {r.repeat_top && <p>回锅之王：<b>{r.repeat_top.name}</b>，做了 {r.repeat_top.times} 回</p>}
       {r.streak_weeks >= 2 && <p>连续开火 <b>{r.streak_weeks}</b> 周了</p>}
+      {/* orders_done=家人点的菜做掉数；别写「翻牌子」——那是随机抽菜功能，撞名会把两件事搅一起 */}
       {r.orders_done && r.orders_done.count > 0 && (
-        {/* orders_done=家人点的菜做掉数；别写「翻牌子」——那是随机抽菜功能，撞名会把两件事搅一起 */}
         <p>家里点的菜做掉 <b>{r.orders_done.count}</b> 道
           {r.orders_done.froms.length > 0 && <span className="dimtext">（{r.orders_done.froms.join("、")} 点的）</span>}
         </p>
