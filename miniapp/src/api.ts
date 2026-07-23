@@ -240,7 +240,8 @@ export const api = {
       use_pantry: opts?.usePantry ? 1 : undefined,
       exclude: opts?.exclude?.length ? opts.exclude.join(",") : undefined,
     })}`),
-  suggest: () => request<{ suggestions: Suggestion[]; date: string }>("/api/suggest"),
+  // locked：菜 <3 道时后端不给荐（样本太少荐不准），带 need=还差几道，前端渲染进度钩子
+  suggest: () => request<{ suggestions: Suggestion[]; date: string; locked?: { need: number } }>("/api/suggest"),
   ingredient: (name: string) => request<IngInfo>(`/api/ingredient/${encodeURIComponent(name)}`),
   ingredientNames: () => request<{ names: string[]; defaults: Record<string, number> }>("/api/ingredient-names"),
   pantry: () => request<{ items: string[] }>("/api/pantry"),
@@ -251,13 +252,20 @@ export const api = {
   updateMeal: (id: string, patch: object) => request<Meal>(`/api/meals/${id}`, "PUT", patch),
   deleteMeal: (id: string) => request<{ ok: boolean }>(`/api/meals/${id}`, "DELETE"),
   seedExamples: () => request<{ added: number }>("/api/seed-examples", "POST"),
+  // 一键收走示例菜（主人）：只收还没记过餐的，记过餐的 kept 保留
+  deleteSeedExamples: () => request<{ removed: number; kept: number }>("/api/seed-examples", "DELETE"),
   guestLink: (reset = false) => request<{ token: string }>(`/api/guest-link${reset ? "?reset=true" : ""}`, "POST"),
   guestMenu: (t: string) =>
     request<{ categories: string[]; recipes: GuestDish[] }>(`/api/guest/menu?t=${encodeURIComponent(t)}`),
   // items 带 name：菜若已被主人收回，服务端 dropped 里才能回显菜名而不是裸 id
-  guestOrder: (t: string, from: string, note: string, items: { id: string; note: string; name?: string }[]) =>
-    request<{ ok: boolean; accepted: { recipe_id: string; name: string; note: string }[]; dropped: string[] }>(
-      "/api/guest/order", "POST", { t, from, note, items }),
+  // client_id：点单幂等键——同 client_id 重试返回相同回执，弱网下不再重复下单；响应 id 用于客人回执查状态
+  guestOrder: (t: string, from: string, note: string, items: { id: string; note: string; name?: string }[], clientId?: string) =>
+    request<{ ok: boolean; id: string | null; accepted: { recipe_id: string; name: string; note: string }[]; dropped: string[] }>(
+      "/api/guest/order", "POST", { t, from, note, items, client_id: clientId }),
+  // 客人查自己单的状态（公开口，凭口令）：只回 done/done_date，单内容不回传
+  guestOrderStatus: (t: string, ids: string[]) =>
+    request<{ orders: { id: string; done: boolean; done_date?: string }[] }>(
+      `/api/guest/order-status?t=${encodeURIComponent(t)}&ids=${encodeURIComponent(ids.join(","))}`),
   orders: () => request<Order[]>("/api/orders"),
   orderDone: (id: string, done = true) => request<Order>(`/api/orders/${id}`, "PUT", { done }),
   shopping: () => request<{ items: ShopItem[] }>("/api/shopping"),

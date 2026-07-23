@@ -4,8 +4,11 @@ import { useState } from "react";
 import Taro, { useDidShow } from "@tarojs/taro";
 import { Image, Picker, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, type Meal } from "../../api";
-import { ErrRetry, Loading } from "../../components/common";
+import { ErrRetry, Loading, PosterSheet } from "../../components/common";
+import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
+
+const isWeapp = process.env.TARO_ENV === "weapp";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -134,6 +137,7 @@ export default function Timeline() {
   const [showReport, setShowReport] = useState(false);
   const [goal, setGoal] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [monthPoster, setMonthPoster] = useState("");
 
   // 不 catch 的话，meals 接口一旦 5xx 就永久停在「加载中」，连报错都看不到
   const load = () => api.meals().then(ms => { setMeals(ms); setErr(""); })
@@ -163,6 +167,24 @@ export default function Timeline() {
   const todayKcal = todayMeals.reduce((s, m) => s + (m.kcal ?? 0), 0);
   const todayUncounted = todayMeals.filter(m => m.kcal == null).length;  // 没热量的餐不进合计，得说明一声
   const overGoal = goal != null && todayKcal > goal;
+  // 本月小结卡入口：本月有记录才摆——空月后端 404，别领着人去撞「图没能取回来」
+  const ym = todayStr.slice(0, 7);
+  const monthHasMeals = meals.some(m => m.date.startsWith(ym));
+
+  // 与教程卡/纸上食单同一条路：<Image> 的镜像请求带不上 openid 头，走 guest token 的 query 放行通道
+  async function openMonthCard() {
+    const base = isWeapp ? CLOUDRUN_HTTP_BASE : LOCAL_BASE;
+    if (!base) {
+      Taro.showToast({ title: "云端才支持导出（未配公网访问域名）", icon: "none" });
+      return;
+    }
+    try {
+      const { token } = await api.guestLink();
+      setMonthPoster(`${base}/api/monthcard/${ym}?t=${encodeURIComponent(token)}`);
+    } catch (e) {
+      toastErr(e, "小结卡没能生成");
+    }
+  }
 
   return (
     <View className="page">
@@ -181,6 +203,9 @@ export default function Timeline() {
         </View>
       )}
       {showReport && <WeekReport />}
+      {monthHasMeals && (
+        <View className="btn ghost monthbtn" hoverClass="btn-hover" onClick={openMonthCard}>本月小结卡 ›</View>
+      )}
       {meals.length === 0 && (
         <View className="empty">
           <View className="empty-ico">🍚</View>
@@ -197,6 +222,9 @@ export default function Timeline() {
           {ms.map(m => <MealRow key={m.id} m={m} onChanged={load} />)}
         </View>
       ))}
+      {monthPoster !== "" && (
+        <PosterSheet url={monthPoster} title="本月小结卡" onClose={() => setMonthPoster("")} />
+      )}
     </View>
   );
 }

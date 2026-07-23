@@ -18,6 +18,8 @@ function todayStr(): string {
 
 export default function Index() {
   const [cats, setCats] = useState<string[]>([]);
+  // 服务端完整分类表（cats 只留有菜的分类；搜索空态建档要能选任何分类，单独存一份）
+  const [allCats, setAllCats] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
   const [cat, setCat] = useState("");
   const [fan, setFan] = useState(false);
@@ -32,6 +34,8 @@ export default function Index() {
   const [wishCount, setWishCount] = useState(0);
   // 今日荐（规则版）：失败/空数组/客人 401 → 保持 []，整条不渲染，零痕迹
   const [sug, setSug] = useState<Suggestion[]>([]);
+  // 菜 <3 道时后端 locked：need=还差几道。荐区不空着，给一句进度钩子
+  const [sugNeed, setSugNeed] = useState<number | null>(null);
   const [avoid7, setAvoid7] = useState(() => readFlag("fan_avoid7", true));
   const [quick30, setQuick30] = useState(() => readFlag("fan_quick30", false));
   const [easy, setEasy] = useState(() => readFlag("fan_easy", false));
@@ -93,11 +97,32 @@ export default function Index() {
     if (drawn) Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(drawn.id)}` });
   }
 
+  // 搜索空态建档：搜了没有 → 直接拿关键词当菜名立档（选个分类），进详情页补做法。
+  // 不经过记一餐、不伪造食历——只是把「想记这道菜」的念头当场接住。
+  async function quickAdd(name: string) {
+    let category = "";
+    try {
+      // 微信 actionSheet 上限 6 项；默认分类 5 个，自定义分类多出的截掉
+      const list = (allCats.length > 0 ? allCats : cats).slice(0, 6);
+      const { tapIndex } = await Taro.showActionSheet({ itemList: list });
+      category = list[tapIndex] ?? "";
+    } catch { return; } // 取消选分类 → 不立档
+    try {
+      const nr = await api.saveRecipe({ name, category });
+      setQ("");
+      Taro.navigateTo({ url: `/pages/recipe/index?id=${encodeURIComponent(nr.id)}` });
+      Taro.showToast({ title: "已立档，补个做法？", icon: "none" });
+    } catch (e) {
+      toastErr(e);
+    }
+  }
+
   function load() {
     return api.recipes().then(({ categories, recipes }) => {
       const used = [...new Set(recipes.map(r => r.category))];
       const all = [...categories.filter(c => used.includes(c)), ...used.filter(c => !categories.includes(c))];
       setCats(all);
+      setAllCats(categories);
       setRecipes(recipes);
       setCat(c => (c && all.includes(c) ? c : all[0] || ""));
       setErr("");
@@ -116,7 +141,9 @@ export default function Index() {
     api.orders()
       .then(os => setWishCount(os.filter(o => !o.done).reduce((n, o) => n + o.items.length, 0)))
       .catch(() => setWishCount(0));
-    api.suggest().then(s => setSug(s.suggestions)).catch(() => setSug([]));
+    api.suggest()
+      .then(s => { setSug(s.suggestions); setSugNeed(s.locked?.need ?? null); })
+      .catch(() => { setSug([]); setSugNeed(null); });
   });
 
   if (guestLocked) {
@@ -232,7 +259,7 @@ export default function Index() {
                   <View className="minibtn" hoverClass="btn-hover" onClick={skipDrawn}>不想吃，换一张</View>
                 </View>
               </View>
-            ) : sugShown.length > 0 && (
+            ) : sugShown.length > 0 ? (
               <View className="sug-list">
                 {sugShown.map(s => (
                   <View className="sug-item" key={s.recipe_id}>
@@ -244,7 +271,10 @@ export default function Index() {
                   </View>
                 ))}
               </View>
-            )}
+            ) : sugNeed != null ? (
+              /* 菜太少荐不准（后端 locked）：不装有荐，给句实话当进度钩子；翻牌子照常可用 */
+              <View className="sug-locked">再记 {sugNeed} 道菜，管家就开始替你参谋了</View>
+            ) : null}
             {fan && (
               <View className="fanpanel-in">
                 {toggles.map(t => (
@@ -285,7 +315,11 @@ export default function Index() {
                     </View>
                   )}
                   <View className="body">
-                    <View className="dname">{r.name}</View>
+                    <View className="dname">
+                      {r.name}
+                      {/* 示例菜章：hairline 小方块，dim 色——有封面的示例菜也一眼可辨，但不抢戏 */}
+                      {r.demo && <Text className="demostamp">示例</Text>}
+                    </View>
                     <View className="chips">
                       <Text className="chip">★ {r.rating?.toFixed(1) ?? "—"}</Text>
                       <Text className="chip">做过 {r.times} 回</Text>
@@ -304,6 +338,10 @@ export default function Index() {
                 <View className="empty">
                   <View className="empty-ico">🍚</View>
                   <Text>{kw ? `没有和「${kw}」相关的菜` : "这个分类还没有菜"}</Text>
+                  {kw !== "" && (
+                    <View className="btn ghost quickadd" hoverClass="btn-hover"
+                      onClick={() => quickAdd(kw)}>把『{kw}』录进食单</View>
+                  )}
                 </View>
               )}
             </View>

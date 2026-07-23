@@ -117,6 +117,13 @@
   font-size: 13px;
   opacity: 0.85;
 }
+/* 菜太少荐不动时的进度钩子：dim 楷体一句话，不摆空架子 */
+.sug-locked {
+  margin-top: 4px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 13px;
+}
 
 /* 翻牌结果行 + 划掉重抽 */
 .drawrow {
@@ -269,6 +276,19 @@
   font-family: var(--serif);
   font-weight: 700;
 }
+/* 示例菜章：hairline 描边小方块，dim 色，跟在菜名旁不抢戏 */
+.demostamp {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line-hair);
+  border-radius: 3px;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.7;
+  vertical-align: 2px;
+}
 .dish .go {
   margin-top: 12px;
   display: flex;
@@ -283,6 +303,14 @@
 .empty-acts {
   margin-top: 20px;
   max-width: 340px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 搜索空态建档：ghost 一枚，接住「想记这道菜」的念头 */
+.quickadd {
+  margin-top: 16px;
+  max-width: 300px;
   margin-left: auto;
   margin-right: auto;
 }

@@ -7,6 +7,47 @@
   margin-bottom: 14px;
 }
 
+/* 我点过的：安静回执卡——整体 dim，只有「做好了 ✓」用朱砂 */
+.mineorders {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+}
+.mineorders .t {
+  margin-bottom: 4px;
+  font-family: var(--serif);
+  letter-spacing: 2px;
+  font-size: 13px;
+}
+.mine-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 2;
+}
+.mine-date {
+  color: var(--dim);
+  flex-shrink: 0;
+}
+.mine-names {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mine-sent {
+  color: var(--dim);
+  flex-shrink: 0;
+  font-size: 12.5px;
+}
+.mine-done {
+  color: var(--accent);
+  font-family: var(--serif);
+  flex-shrink: 0;
+  font-size: 12.5px;
+}
+
 .searchbar {
   position: relative;
   margin-bottom: 12px;

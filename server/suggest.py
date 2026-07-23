@@ -342,6 +342,13 @@ def daily(day: str | None = None) -> dict:
 
     AI 任何一步失败（不可用/异常/超时/JSON 不合法/校验不过）都静默落回规则版——
     永不因 AI 挂而 500。source 字段标记来源："ai" / "rules"。"""
+    # 进度钩子：食单不满 MIN_RECIPES 时不是沉默的空，而是告诉前端还差几道
+    #（「再记 N 道菜，管家就开始替你参谋」）。锁定分支在最前，缓存/AI 路径全不碰。
+    n = len(storage.list_recipes())
+    if n < MIN_RECIPES:
+        today = _safe_date(day) or date.today()
+        return {"suggestions": [], "locked": {"need": MIN_RECIPES - n},
+                "date": today.isoformat(), "source": "rules"}
     try:
         result = _ai_daily(day)
         if result is not None:

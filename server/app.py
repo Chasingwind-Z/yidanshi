@@ -6,6 +6,8 @@ import math
 import os
 import random
 import re
+import threading
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -43,7 +45,8 @@ _load_secrets()
 # X-WX-OPENID 等于它 → 视同主人；不等 → 仅放行 _PUBLIC_API。两道门任一通过即主人。
 OWNER_TOKEN = os.environ.get("YIDANSHI_TOKEN", "").strip()
 OWNER_OPENID = os.environ.get("YIDANSHI_OWNER_OPENID", "").strip()
-_PUBLIC_API = {"/api/guest/menu", "/api/guest/order", "/api/whoami"}  # 开令牌后仍对访客开放的接口
+_PUBLIC_API = {"/api/guest/menu", "/api/guest/order", "/api/guest/order-status",
+               "/api/whoami"}  # 开令牌后仍对访客开放的接口
 
 
 @app.middleware("http")
@@ -52,10 +55,10 @@ async def owner_gate(request: Request, call_next):
         p = request.url.path
         if p.startswith("/api/") and p not in _PUBLIC_API:
             ok = False
-            # 晒图接口（纸上食单/教程卡）是「图」：小程序/浏览器 <Image> 的镜像请求带不上
-            # openid/token 头，放一条 guest token 的 query 通道（?t=…）。t 校验不过或没带
-            # 仍走下面的主人鉴权——不是无条件公开，陌生人白嫖不了。
-            if p == "/api/menuposter" or p.startswith("/api/recipecard/"):
+            # 晒图接口（纸上食单/教程卡/月结卡）是「图」：小程序/浏览器 <Image> 的镜像请求
+            # 带不上 openid/token 头，放一条 guest token 的 query 通道（?t=…）。t 校验不过
+            # 或没带仍走下面的主人鉴权——不是无条件公开，陌生人白嫖不了。
+            if p == "/api/menuposter" or p.startswith(("/api/recipecard/", "/api/monthcard/")):
                 t = request.query_params.get("t", "")
                 if t:
                     try:
@@ -197,9 +200,29 @@ def make_backup():
 
 # ---------- 菜谱 ----------
 
-# 示例菜 id 集合（examples/recipes/*.md 文件名，与 frontmatter id 一致）：启动时读一次缓存；
-# 按 id 判定，文件/DB 两模式行为一致。前端靠 demo 标记把示例菜标出来
-_DEMO_IDS = frozenset(p.stem for p in (storage.ROOT / "examples" / "recipes").glob("*.md"))
+# 示例菜判定：id 在 examples 集合 **且内容仍与示例出厂版一致** 才算 demo。
+# 只按 id 判定的教训：zzf 自己的 7 道真菜正是 examples 的来源（id 完全重合），
+# 纯 id 判定会把主人的菜全标成「示例」，「收走示例菜」还会误删没记过餐的真菜。
+# 内容一致性用签名字段比对（name/category/ingredients/steps/tips）——
+# 摆进来的示例只要被用户改过一笔（实测回填/改做法），就自动"转正"为用户的菜。
+_DEMO_SIGS: dict[str, tuple] = {}
+for _p in (storage.ROOT / "examples" / "recipes").glob("*.md"):
+    try:
+        _er = storage._parse_md(_p.read_text(encoding="utf-8"))
+        _DEMO_SIGS[_p.stem] = (_er.get("name"), _er.get("category"), _er.get("cover"),
+                               [(i.get("name"), i.get("amount")) for i in _er.get("ingredients", [])],
+                               _er.get("steps"), _er.get("tips"))
+    except Exception:  # noqa: BLE001 —— 单个示例文件坏了别把服务拖死
+        continue
+
+
+def _is_demo(r: dict) -> bool:
+    sig = _DEMO_SIGS.get(r["id"])
+    # cover 也进签名："拍了自己的照片，这就是你的菜了"——zzf 的 7 道真菜与示例
+    # 唯一的差异恰是封面（示例是出厂封面），纯文字签名会把主人的菜误标成示例
+    return sig is not None and sig == (r.get("name"), r.get("category"), r.get("cover"),
+                                       [(i.get("name"), i.get("amount")) for i in r.get("ingredients", [])],
+                                       r.get("steps"), r.get("tips"))
 
 
 @app.get("/api/recipes")
@@ -211,7 +234,7 @@ def recipes():
         whole, src = nutrition.effective(r)
         out.append({**r, "times": s.get("times", 0), "rating": s.get("rating"),
                     "kcal_effective": nutrition.per_serving_kcal(r), "kcal_whole": whole, "kcal_source": src,
-                    "demo": r["id"] in _DEMO_IDS})
+                    "demo": _is_demo(r)})
     return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
 
 
@@ -653,7 +676,6 @@ def _notify_owner(order: dict) -> None:
         except Exception:  # noqa: BLE001
             pass
 
-    import threading
     threading.Thread(target=_send, daemon=True).start()
 
 
@@ -696,9 +718,24 @@ def guest_menu(t: str):
     return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
 
 
+# 点单幂等护栏：前端每次点单生成一个 client_id（uuid），超时重试复用同一个——
+# 同 (guest_token, client_id) 在窗口内重复提交不再落库，返回与首次完全相同的回执。
+# 进程内 dict 就够（单实例；云端缩零重启丢缓存可接受——超时重试都在分钟级窗口内）。
+_IDEM_TTL = 600  # 秒：幂等窗口（10 分钟）
+_idem_cache: dict[tuple[str, str], tuple[float, dict]] = {}  # (t, client_id) → (时刻, 回执)
+_idem_lock = threading.Lock()
+
+
 @app.post("/api/guest/order")
 def guest_order(body: dict):
-    _check_guest(body.get("t", ""))
+    t = str(body.get("t", ""))
+    _check_guest(t)
+    client_id = str(body.get("client_id") or "").strip()[:64]
+    if client_id:  # 旧客户端不带 client_id：行为与从前完全一致
+        with _idem_lock:
+            hit = _idem_cache.get((t, client_id))
+            if hit and time.monotonic() - hit[0] < _IDEM_TTL:
+                return hit[1]  # 重试：原样回放首次回执（含首单 id），不再落库
     raw = body.get("items", [])
     if not isinstance(raw, list):
         raise HTTPException(400, "点单格式不对")
@@ -718,9 +755,19 @@ def guest_order(body: dict):
                 dropped.append(label[:60])
     if not accepted and not dropped:
         raise HTTPException(400, "先点至少一道菜")
+
+    def _remember(resp: dict) -> dict:
+        if client_id:
+            with _idem_lock:
+                now = time.monotonic()
+                for k in [k for k, (ts, _) in _idem_cache.items() if now - ts >= _IDEM_TTL]:
+                    del _idem_cache[k]  # 顺手清过期项，缓存不无界膨胀
+                _idem_cache[(t, client_id)] = (now, resp)
+        return resp
+
     if not accepted:
         # 点的菜全被收回：200 + ok:false 如实相告，不落库（请求本身没错，不该 400）
-        return {"ok": False, "accepted": [], "dropped": dropped}
+        return _remember({"ok": False, "id": None, "accepted": [], "dropped": dropped})
     orders = _orders()
     orders.append({"id": f"o{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
                    "from": str(body.get("from", "")).strip()[:20] or "神秘食客",
@@ -728,8 +775,21 @@ def guest_order(body: dict):
                    "items": accepted, "date": date.today().isoformat(), "done": False})
     storage.write_doc("orders", orders)
     _notify_owner(orders[-1])
-    # 旧客户端只看 ok；accepted/dropped 是新增字段（只增不减），前端成功态按回执渲染
-    return {"ok": True, "accepted": accepted, "dropped": dropped}
+    # 旧客户端只看 ok；id/accepted/dropped 是新增字段（只增不减）：id=落库单的 id
+    #（客人凭它查 /api/guest/order-status），前端成功态按回执渲染
+    return _remember({"ok": True, "id": orders[-1]["id"], "accepted": accepted, "dropped": dropped})
+
+
+@app.get("/api/guest/order-status")
+def guest_order_status(t: str, ids: str = ""):
+    """客人回执：凭点菜口令查自己单子的状态（id 客人点单时已拿到，内容本地有——
+    只回状态不回单内容，不多泄）。查无的单静默跳过；一次最多 20 个防滥用。"""
+    _check_guest(t)
+    want = list(dict.fromkeys(s.strip() for s in ids.split(",") if s.strip()))[:20]
+    by_id = {o.get("id"): o for o in _orders()}
+    return {"orders": [{"id": oid, "done": bool(o.get("done")),
+                        "done_date": o.get("done_date")}
+                       for oid in want if (o := by_id.get(oid)) is not None]}
 
 
 @app.get("/api/orders")
@@ -973,6 +1033,22 @@ def seed_examples():
         if storage.seed_recipe(f):
             n += 1
     return {"added": n}
+
+
+@app.delete("/api/seed-examples")
+def remove_seed_examples():
+    """一键收走示例菜：demo 集合内且无任何食历记录关联的删除；记过餐的保留
+    （那已经是用户自己的菜了）。照片不删——与 delete_recipe 语义一致。主人接口。"""
+    used = {m.get("recipe_id") for m in storage.list_meals()}
+    removed = kept = 0
+    for r in storage.list_recipes():
+        if not _is_demo(r):  # 内容被改过的示例已是用户的菜，绝不收（同 demo 标记口径）
+            continue
+        if r["id"] in used:
+            kept += 1
+        elif storage.delete_recipe(r["id"]):
+            removed += 1
+    return {"removed": removed, "kept": kept}
 
 
 # ---------- 静态 ----------

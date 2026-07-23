@@ -1,12 +1,36 @@
 // 家人点菜页（客人视角，分享卡片 ?t=<token> 进入）。
 // 产品纪律：这不是饭店点餐——措辞只用「想吃/点菜/传旨」，没有订单/购物车/结算。
 // 客人一屏完成：选菜 → 每道菜可留讲究（少放辣…）→ 署名 → 传旨。
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
 import { Image, Input, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, type GuestDish } from "../../api";
 import { Loading } from "../../components/common";
 import "./index.scss";
+
+/** 点单幂等键：进入传旨流程生成一个，改了单子内容就换新的（不同单），纯失败重试复用旧的 */
+const newCid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** "2026-07-22" → 「7月22日」；形状不对原样返回 */
+const fmtDay = (d: string) => {
+  const m = d.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return m ? `${Number(m[1])}月${Number(m[2])}日` : d;
+};
+
+/** 本机点过的单（storage my_orders，只留最近 20 条；t 字段用于只认本口令下的单） */
+interface MyOrder { id: string | null; t: string; date: string; names: string[] }
+
+function readMyOrders(): MyOrder[] {
+  try {
+    const a = JSON.parse((Taro.getStorageSync("my_orders") as string) || "null");
+    return Array.isArray(a) ? a : [];
+  } catch { return []; }
+}
 
 export default function Order() {
   const router = useRouter();
@@ -27,6 +51,12 @@ export default function Order() {
   const [refreshing, setRefreshing] = useState(false);
   const [coverErr, setCoverErr] = useState<Record<string, boolean>>({});
   const failCover = (id: string) => setCoverErr(m => (m[id] ? m : { ...m, [id]: true }));
+  // 点单幂等键：改了单子内容（选菜/讲究/捎话）就 bump 换新；catch 后原样重点则复用
+  const cidRef = useRef(newCid());
+  const bumpCid = () => { cidRef.current = newCid(); };
+  // 「我点过的」：本口令下过的单（本地记录）+ 服务端查回的状态（id → done/done_date）
+  const [mine, setMine] = useState<MyOrder[]>([]);
+  const [mineStatus, setMineStatus] = useState<Record<string, { done: boolean; done_date?: string }>>({});
 
   useEffect(() => {
     if (!token) { setBad(true); return; }
@@ -39,6 +69,23 @@ export default function Order() {
         Taro.setStorageSync("guest_t", token);
       })
       .catch(() => setBad(true)); // 403（链接失效）与网络错都归到友好空态
+  }, [token]);
+
+  // 我点过的：只认本口令下的单，新的在上；有 id 的批量查一次状态。
+  // 查询失败/单已不存在 → 对应行只显示本地信息、不显示状态（不吓人也不装知道）。
+  useEffect(() => {
+    if (!token) return;
+    const list = readMyOrders().filter(o => o.t === token).reverse();
+    setMine(list);
+    const ids = list.map(o => o.id).filter((x): x is string => !!x);
+    if (ids.length === 0) return;
+    api.guestOrderStatus(token, ids)
+      .then(({ orders }) => {
+        const m: Record<string, { done: boolean; done_date?: string }> = {};
+        for (const o of orders) m[o.id] = { done: o.done, done_date: o.done_date };
+        setMineStatus(m);
+      })
+      .catch(() => {});
   }, [token]);
 
   if (bad) {
@@ -61,6 +108,7 @@ export default function Order() {
   const pickedIds = Object.keys(picked);
 
   function toggle(id: string) {
+    bumpCid(); // 换了菜就是另一单
     setPicked(p => {
       if (id in p) {
         const { [id]: _drop, ...rest } = p;
@@ -80,16 +128,23 @@ export default function Order() {
     setSending(true);
     try {
       const r = await api.guestOrder(token, who, note.trim(),
-        pickedIds.map(id => ({ id, note: picked[id].trim(), name: dishes!.find(d => d.id === id)?.name })));
+        pickedIds.map(id => ({ id, note: picked[id].trim(), name: dishes!.find(d => d.id === id)?.name })),
+        cidRef.current);
       Taro.setStorageSync("guest_from", who);
       // 成功态按服务端回执渲染：accepted 才是真进了厨房的；dropped 如实相告
       setReceipt({ ok: r.ok, accepted: r.accepted.map(a => a.name), dropped: r.dropped });
       if (r.ok) {
+        // 记进「我点过的」：只记真进了厨房的（accepted），最近 20 条
+        const entry: MyOrder = { id: r.id ?? null, t: token, date: todayStr(), names: r.accepted.map(a => a.name) };
+        Taro.setStorageSync("my_orders", JSON.stringify([...readMyOrders(), entry].slice(-20)));
+        setMine(ms => [entry, ...ms]);
+        if (entry.id) setMineStatus(s => ({ ...s, [entry.id!]: { done: false } }));
         setPicked({});
         setNote("");
+        bumpCid(); // 这单已落定，下一单换新键
       }
     } catch (e) {
-      toastErr(e, "没传出去，再试一次");
+      toastErr(e, "没传出去，再试一次"); // 原样再点=同一单，cid 不换，服务端幂等兜底
     } finally {
       setSending(false);
     }
@@ -105,6 +160,7 @@ export default function Order() {
       setCats(["全部", ...categories.filter(c => used.includes(c)), ...used.filter(c => !categories.includes(c))]);
       setDishes(recipes);
       setCat("全部");
+      bumpCid(); // 选中项可能被裁掉，内容变了就是新单
       setPicked(p => {
         const next: Record<string, string> = {};  // fromEntries 是 ES2019，老基础库不稳，手拼
         for (const [pid, pn] of Object.entries(p)) if (recipes.some(d => d.id === pid)) next[pid] = pn;
@@ -123,6 +179,27 @@ export default function Order() {
       <Text className="seal">旨</Text>
       <View className="h1">今天想吃什么</View>
       <View className="hint nomt">点一点想吃的菜，有讲究就写一句，最后传给厨房。</View>
+
+      {/* 我点过的：安静的回执卡。状态只有两档——「已传到」/「做好了 ✓」，
+          永不加“制作中/预计时间”（评审裁决：这是家里的厨房，不是外卖进度条，
+          做没做只有这两个事实，别造中间态承诺）。 */}
+      {mine.length > 0 && (
+        <View className="papercard mineorders">
+          <View className="t">我点过的</View>
+          {mine.map((o, i) => {
+            const st = o.id ? mineStatus[o.id] : undefined;
+            return (
+              <View key={o.id ?? `local${i}`} className="mine-row">
+                <Text className="mine-date">{fmtDay(o.date)}</Text>
+                <Text className="mine-names">{o.names.join("、")}</Text>
+                {st && (st.done
+                  ? <Text className="mine-done">做好了 ✓{st.done_date ? ` ${fmtDay(st.done_date)}` : ""}</Text>
+                  : <Text className="mine-sent">已传到</Text>)}
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       {dishes.length > 5 && (
         <View className="searchbar">
@@ -166,7 +243,7 @@ export default function Order() {
               {on && (
                 <View className="gd-noterow">
                   <Input className="ipt gd-note" placeholderClass="ph" value={picked[d.id]}
-                    onInput={e => setPicked(p => ({ ...p, [d.id]: e.detail.value }))}
+                    onInput={e => { bumpCid(); setPicked(p => ({ ...p, [d.id]: e.detail.value })); }}
                     maxlength={60} placeholder="有什么讲究？少放辣、多放醋…" />
                 </View>
               )}
@@ -185,7 +262,7 @@ export default function Order() {
         <View className="papercard boxline sendcard">
           <View className="t">已选 {pickedIds.length} 道 · 捎句话（可不写）</View>
           <Textarea className="ta ordernote" placeholderClass="ph" value={note} maxlength={200}
-            onInput={e => setNote(e.detail.value)} placeholder="想说的话，比如：周六中午回家吃" />
+            onInput={e => { bumpCid(); setNote(e.detail.value); }} placeholder="想说的话，比如：周六中午回家吃" />
         </View>
       )}
 

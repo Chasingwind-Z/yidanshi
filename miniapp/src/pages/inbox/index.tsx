@@ -15,6 +15,14 @@ const doneDay = (d: string) => {
   return `${Number(m)}月${Number(day)}日`;
 };
 
+/** 单 id 形如 o+YYYYMMDDHHMMSS+微秒（o20260722143205123456）→ 「14:32」；
+ *  形状不对（老单/异构 id）返回空串、不显示——时刻是顺手解析出来的，解析不出就别硬凑 */
+const orderTime = (id: string) => {
+  const m = id.match(/^o\d{8}(\d{2})(\d{2})\d{2}\d{6}$/);
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return "";
+  return `${m[1]}:${m[2]}`;
+};
+
 function OrderCard({ o, onDone, onShop, shopped }: {
   o: Order; onDone?: (o: Order) => void; onShop?: (o: Order) => void; shopped?: boolean;
 }) {
@@ -22,7 +30,7 @@ function OrderCard({ o, onDone, onShop, shopped }: {
     <View className={`papercard ocard ${o.done ? "isdone" : "boxline"}`}>
       <View className="o-head">
         <Text className="o-from">{o.from}</Text>
-        <Text className="o-date">{o.date}</Text>
+        <Text className="o-date">{o.date}{orderTime(o.id) !== "" ? ` ${orderTime(o.id)}` : ""}</Text>
       </View>
       <View className="o-items">
         {o.items.map((it, i) => (

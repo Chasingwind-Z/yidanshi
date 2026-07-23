@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import Taro, { useShareAppMessage } from "@tarojs/taro";
 import { Button, Input, Text, View } from "@tarojs/components";
-import { api, toastErr, type AiStatus, type ConfigPayload } from "../../api";
+import { api, absUrl, toastErr, type AiStatus, type ConfigPayload, type Recipe } from "../../api";
 import { Loading, PosterSheet } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
@@ -63,15 +63,26 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [token, setToken] = useState("");
   const [poster, setPoster] = useState<{ url: string; title: string } | null>(null);
+  // 食单一份留在手边：转发卡片配图取第一道有封面的菜；「收走示例菜」按是否还有 demo 菜显隐
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
 
   const makeToken = (reset: boolean) =>
     api.guestLink(reset).then(d => setToken(d.token)).catch(toastErr);
 
-  // 「发点菜卡片」转发：卡片直达点菜页并带上口令
-  useShareAppMessage(() => ({
-    title: "来我家点菜呀 🍚",
-    path: `/pages/order/index?t=${token}`,
-  }));
+  const loadRecipes = () =>
+    api.recipes().then(d => setRecipes(d.recipes)).catch(() => {});
+
+  // 「发点菜卡片」转发：卡片直达点菜页并带上口令；配图用食单里第一道有封面的菜
+  //（没有任何封面就不带 imageUrl，让微信用默认截图，别配一张裂图）
+  useShareAppMessage(() => {
+    const msg: { title: string; path: string; imageUrl?: string } = {
+      title: "来我家点菜呀 🍚",
+      path: `/pages/order/index?t=${token}`,
+    };
+    const cover = recipes.find(r => r.cover !== "")?.cover;
+    if (cover) msg.imageUrl = absUrl(cover);
+    return msg;
+  });
 
   useEffect(() => {
     api.config().then(c => {
@@ -80,7 +91,29 @@ export default function Settings() {
     }).catch(toastErr);
     api.aiStatus().then(setStatus).catch(() => {});
     makeToken(false);
+    loadRecipes();
   }, []);
+
+  // 一键收走示例菜：只收还没记过餐的；记过餐的已经是真食历的一部分，保留
+  async function sweepDemo() {
+    const { confirm } = await Taro.showModal({
+      title: "收走示例菜",
+      content: "收走还没记过餐的示例菜？记过餐的会保留",
+      confirmText: "收走",
+      cancelText: "先不了",
+    });
+    if (!confirm) return;
+    try {
+      const { removed, kept } = await api.deleteSeedExamples();
+      Taro.showToast({
+        title: kept > 0 ? `收走了 ${removed} 道，有 ${kept} 道因为记过餐留下了` : `收走了 ${removed} 道`,
+        icon: "none",
+      });
+      loadRecipes(); // 全收干净后按钮跟着消失
+    } catch (e) {
+      toastErr(e);
+    }
+  }
 
   // 纸上食单长图：<Image> 的镜像请求带不上 openid 头，走 guest token 的 query 放行通道
   function openPoster(style: string, title: string) {
@@ -152,6 +185,11 @@ export default function Settings() {
             onClick={() => openPoster(style, title)}>{title}</View>
         ))}
       </View>
+
+      {/* 只在食单里还有示例菜时出现：收干净了就没这行 */}
+      {recipes.some(r => r.demo) && (
+        <View className="btn ghost sweepbtn" hoverClass="btn-hover" onClick={sweepDemo}>收走示例菜</View>
+      )}
 
       {poster && <PosterSheet url={poster.url} title={poster.title} onClose={() => setPoster(null)} />}
     </View>

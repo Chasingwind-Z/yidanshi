@@ -116,11 +116,78 @@ def _ing_icon(icon: Image.Image | None, name: str, cell: int) -> Image.Image:
     return im
 
 
+def _finish(img: Image.Image, y: int) -> bytes:
+    """裁到实际高度 → 画文武边 → 放大到 1440 → PNG 字节（整卡/占位卡同一出口）。"""
+    img = img.crop((0, 0, W, y))
+    d = ImageDraw.Draw(img)  # 文武边（先裁出最终高度再画框，才贴得住四边）
+    d.rectangle([26, 26, W - 27, y - 27], outline=FRAME, width=3)
+    d.rectangle([38, 38, W - 39, y - 39], outline=HAIR, width=1)
+
+    # 出图放大到 1440 宽（zzf 真机反馈 1080 偏小）：字号常量散布 16 处不宜整体重排，
+    # LANCZOS 1.33x 的文字软化在手机/小红书二压后不可察，换来一档更"大"的成图
+    out_w = 1440
+    img = img.resize((out_w, int(img.height * out_w / W)), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _placeholder_card(r: dict) -> bytes:
+    """没录做法的菜不出空荡长卡：短占位卡（卡头 + 封面有则放 + 一句朱批 + 落款）。"""
+    name_lines = _wrap(r["name"], _kai(72, bold=True), CW - 96 - 40)
+    cover = _load(r.get("cover"))
+    if cover is not None:
+        cover = _rounded(_fit(cover, CW, 400), 26)
+
+    est = 96 + len(name_lines) * 92 + 66 + 400 + 300 + (cover.height + 44 if cover is not None else 0)
+    img = Image.new("RGB", (W, est), PAPER)
+    d = ImageDraw.Draw(img)
+
+    # ---- 卡头（与整卡同款）----
+    y = 96
+    seal_size = 96
+    _seal(d, W - M - seal_size, y - 6, seal_size)
+    fk = _kai(72, bold=True)
+    for ln in name_lines:
+        d.text((M, y + 40), ln, font=fk, anchor="lm", fill=INK)
+        y += 92
+    sub = " · ".join(x for x in (
+        r.get("category"), r.get("difficulty"),
+        f"{r['minutes']} 分钟" if r.get("minutes") else "") if x)
+    if sub:
+        d.text((M, y + 10), sub, font=_song(28), anchor="lm", fill=DIM)
+    y += 66
+
+    # ---- 封面（有则放）----
+    if cover is not None:
+        img.paste(cover, (M, y), cover)
+        y += cover.height + 44
+
+    # ---- 居中一句朱批（无封面时多留些呼吸，卡不显得秃）----
+    y += 200 if cover is None else 64
+    d.text((W // 2, y), "这道菜还没录教程", font=_kai(46, bold=True), anchor="mm", fill=RED)
+    y += 76
+    d.text((W // 2, y), "贴个链接让 AI 代录，或手动补几笔", font=_kai(32), anchor="mm", fill=RED)
+    y += 190 if cover is None else 72
+
+    # ---- 落款（同整卡）----
+    cx, s = W // 2, 58
+    d.rounded_rectangle([cx - s // 2, y, cx + s // 2, y + s], radius=9, fill=RED)
+    d.text((cx, y + s // 2 - 2), "箪", font=_font(34), anchor="mm", fill=CARD)
+    d.text((cx, y + s + 34), "一箪食", font=_kai(28), anchor="mm", fill=DIM)
+    y += s + 34 + 64
+
+    return _finish(img, y)
+
+
 def render(rid: str) -> bytes:
     """→ png 字节。菜谱不存在抛 LookupError。"""
     r = storage.get_recipe(rid)
     if r is None:
         raise LookupError("没有这道菜")
+    if not r["steps"]:  # 没录做法：短占位卡（HTTP 200），不渲染空荡长卡
+        return _placeholder_card(r)
 
     # 朱批：历次记录里带备注的（与 /api/recipes/{rid} 同口径，最近 5 条）
     notes = sorted([(str(m["date"]), str(m["note"])) for m in storage.list_meals()
@@ -268,16 +335,4 @@ def render(rid: str) -> bytes:
     d.text((cx, y + s + 34), "一箪食", font=_kai(28), anchor="mm", fill=DIM)
     y += s + 34 + 64
 
-    img = img.crop((0, 0, W, y))
-    d = ImageDraw.Draw(img)  # 文武边（先裁出最终高度再画框，才贴得住四边）
-    d.rectangle([26, 26, W - 27, y - 27], outline=FRAME, width=3)
-    d.rectangle([38, 38, W - 39, y - 39], outline=HAIR, width=1)
-
-    # 出图放大到 1440 宽（zzf 真机反馈 1080 偏小）：字号常量散布 16 处不宜整体重排，
-    # LANCZOS 1.33x 的文字软化在手机/小红书二压后不可察，换来一档更"大"的成图
-    out_w = 1440
-    img = img.resize((out_w, int(img.height * out_w / W)), Image.LANCZOS)
-
-    buf = io.BytesIO()
-    img.save(buf, "PNG")
-    return buf.getvalue()
+    return _finish(img, y)
