@@ -373,3 +373,24 @@
   max-width: 520px;
   margin-top: 14px;
 }
+
+/* 取景层退出口：右上 ✕ + 底部「不加图直接记」——抠图是可选的，别把人困住 */
+.frameclose {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--card2);
+  font-size: 22px;
+}
+.frameskip {
+  margin-top: 16px;
+  color: var(--card2);
+  font-size: 14px;
+  opacity: 0.85;
+  padding: 8px 16px;
+}

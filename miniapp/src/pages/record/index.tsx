@@ -304,6 +304,8 @@ export default function Record() {
 
   const framingOverlay = framing ? (
     <View className="framemask" catchMove>
+      {/* 右上角退出：拍完不想抠也能走，这餐不配图直接记（抠图本就是可选的） */}
+      <View className="frameclose" hoverClass="btn-hover" onClick={() => setFraming(null)}>✕</View>
       <View className="frametitle">对准盘子</View>
       <View className="framewrap">
         <Image src={framing} mode="widthFix" className="frameimg" />
@@ -317,6 +319,7 @@ export default function Record() {
           onClick={() => { setFraming(null); choosePhoto(); }}>换一张</View>
         <View className="btn" hoverClass="btn-hover" onClick={() => doCutout(framing)}>就这么抠 ✎</View>
       </View>
+      <View className="frameskip" hoverClass="btn-hover" onClick={() => setFraming(null)}>不加图，直接记这餐</View>
     </View>
   ) : null;
 
