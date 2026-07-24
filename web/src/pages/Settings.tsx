@@ -85,7 +85,8 @@ function GuestLinkSection() {
       </div>
       <input readOnly value={link} style={{ marginTop: 8 }} onFocus={e => e.target.select()} />
       <div className="row" style={{ marginTop: 8 }}>
-        <button className="btn ghost" onClick={() => {
+        {/* 朱砂纪律：主动作（复制去发给家人）占朱砂；破坏性的「重置」降为 dim，危险感靠确认弹窗 */}
+        <button className="btn" onClick={() => {
           navigator.clipboard?.writeText(link).then(() => setCopied(true));
         }}>{copied ? "已复制 ✓" : "复制链接"}</button>
         <button className="btn ghost danger" onClick={() => { if (confirm("重置后旧链接立即失效，确定？")) make(true); }}>重置链接</button>
@@ -145,7 +146,7 @@ export default function Settings() {
           ；生图 {S.imagegen.available ? `✓ ${S.imagegen.model || S.imagegen.backend}` : "✗ 不可用"}</div>
       </div>
 
-      <h1 style={{ fontSize: 18, marginTop: 24 }}>文字 AI（整理菜谱 / 估热量）</h1>
+      <h2>文字 AI（整理菜谱 / 估热量）</h2>
       <label className="f">通道</label>
       <select value={llm.backend ?? ""} onChange={e => setLlm({ ...llm, backend: e.target.value })}>
         <option value="">自动探测本机 claude / codex CLI（推荐，零配置）</option>
@@ -158,7 +159,7 @@ export default function Settings() {
           <label className="f">Base URL</label>
           <input value={llm.base_url ?? ""} onChange={e => setLlm({ ...llm, base_url: e.target.value })}
             placeholder="https://api.deepseek.com/v1" />
-          <div className="row">
+          <div className="row col2">
             <div>
               <label className="f">模型</label>
               <input value={llm.model ?? ""} onChange={e => setLlm({ ...llm, model: e.target.value })} placeholder="deepseek-chat" />
@@ -173,11 +174,11 @@ export default function Settings() {
         </>
       )}
 
-      <h1 style={{ fontSize: 18, marginTop: 28 }}>生图 AI（插画 / 精修）</h1>
+      <h2>生图 AI（插画 / 精修）</h2>
       <label className="f">Base URL（OpenAI 兼容 /images/generations）</label>
       <input value={img.base_url ?? ""} onChange={e => setImg({ ...img, backend: "openai-images", base_url: e.target.value })}
         placeholder="https://ark.cn-beijing.volces.com/api/v3" />
-      <div className="row">
+      <div className="row col2">
         <div>
           <label className="f">生图模型</label>
           <input value={img.model ?? ""} onChange={e => setImg({ ...img, model: e.target.value })} placeholder="doubao-seedream-…" />
@@ -187,7 +188,7 @@ export default function Settings() {
           <input value={img.edit_model ?? ""} onChange={e => setImg({ ...img, edit_model: e.target.value })} placeholder="留空 = 同生图模型" />
         </div>
       </div>
-      <div className="row">
+      <div className="row col2">
         <div>
           <label className="f">Key 环境变量名</label>
           <input value={img.api_key_env ?? ""} onChange={e => setImg({ ...img, api_key_env: e.target.value })} placeholder="ARK_API_KEY" />
@@ -198,12 +199,12 @@ export default function Settings() {
         </div>
       </div>
       <label className="toggle" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, color: "var(--dim)", fontSize: 14 }}>
-        <input type="checkbox" style={{ width: "auto" }} checked={img.extra?.watermark === false}
+        <input type="checkbox" checked={img.extra?.watermark === false}
           onChange={e => setImg({ ...img, extra: { ...(img.extra ?? {}), watermark: !e.target.checked } })} />
         去除平台水印（Seedream 支持）
       </label>
 
-      <h1 style={{ fontSize: 18, marginTop: 28 }}>健康</h1>
+      <h2>健康</h2>
       <label className="f">每日参考热量（kcal，留空则不显示对照）</label>
       <input type="number" inputMode="numeric" value={goalKcal} onChange={e => setGoalKcal(e.target.value)}
         placeholder="如 1800" style={{ maxWidth: 160 }} />
@@ -214,23 +215,23 @@ export default function Settings() {
         <button className="btn" disabled={saving} onClick={save}>{saving ? "保存中…" : "保存设置"}</button>
       </div>
 
-      <h1 style={{ fontSize: 18, marginTop: 28 }}>访问口令</h1>
+      <h2>访问口令</h2>
       <div className="hint" style={{ marginTop: 0, lineHeight: 1.9 }}>
         {cfg.owner_token
           ? <>已开启 ✓ 主人接口都要口令。手机换设备时用魔法链接 <code>http://电脑IP:18100/#/?token=你的令牌</code> 打开一次即可（令牌存本地、自动从地址栏抹掉；用 <code>#/</code> 形式令牌不会进服务器日志）。</>
           : <>当前<b>未设口令</b>——同一 Wi-Fi 局域网自用没问题。若要把服务开到公网（内网穿透 / 端口转发），先在 <code>data/secrets.env</code> 里加一行 <code>YIDANSHI_TOKEN=一串随机字符</code> 并重启，之后主人接口就要口令了；访客点菜链接不受影响。</>}
       </div>
 
-      <h1 style={{ fontSize: 18, marginTop: 28 }}>纸上食单</h1>
+      <h2>纸上食单</h2>
       <MenuPosterSection />
 
-      <h1 style={{ fontSize: 18, marginTop: 28 }}>点菜链接</h1>
+      <h2>点菜链接</h2>
       <GuestLinkSection />
 
-      <h1 style={{ fontSize: 18, marginTop: 28 }}>备份</h1>
+      <h2>备份</h2>
       <BackupSection />
 
-      <h1 style={{ fontSize: 18, marginTop: 28 }}>数据</h1>
+      <h2>数据</h2>
       <div className="hint" style={{ lineHeight: 2 }}>
         所有数据都是本机 <code>data/</code> 目录下的文件（菜谱 Markdown、记录 JSON、照片）。<br />
         备份：<code>./scripts/manage.sh backup</code>；手机访问：http://电脑IP:18100 加入主屏。<br />

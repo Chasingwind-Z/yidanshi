@@ -75,12 +75,14 @@ export default function Menu() {
           <span className="seal">箪</span>
           <h1>我的食单</h1>
         </div>
+        {/* 素印「牌 / 录 / 设」：与左上朱印「箪」一朱三素——emoji/齿轮是 App 语言，
+            汉字闲章才是纸面的原生词汇（小程序已立此例，web 跟上） */}
         <div className="headacts">
           {recipes.length > 0 && (
-            <button title="翻牌子：随便来一道" onClick={() => setFan(f => !f)}>🎴</button>
+            <button className="actseal" title="翻牌子：随便来一道" onClick={() => setFan(f => !f)}>牌</button>
           )}
-          <a href="#/new" title="录一道菜">＋</a>
-          <a href="#/settings" title="设置">⚙</a>
+          <a className="actseal" href="#/new" title="录一道菜">录</a>
+          <a className="actseal" href="#/settings" title="设置">设</a>
         </div>
       </div>
       {orders.map(o => (

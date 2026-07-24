@@ -124,6 +124,9 @@ export default function RecipePage({ id }: { id: string }) {
   const [exporting, setExporting] = useState(false);
   const [ingSheet, setIngSheet] = useState<{ name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number } | null>(null);
   const [relaxed, setRelaxed] = useState(false);
+  // 食材插画缺图兜底：某张 illust URL 404 时记下，回落到 EMOJI 表（照抄小程序 recipe/index.tsx）
+  const [iconErr, setIconErr] = useState<Record<number, boolean>>({});
+  const failIcon = (i: number) => setIconErr(m => (m[i] ? m : { ...m, [i]: true }));
   useEffect(() => {
     if (sessionStorage.getItem("fan_relaxed")) { sessionStorage.removeItem("fan_relaxed"); setRelaxed(true); }
   }, [id]);
@@ -187,7 +190,7 @@ export default function RecipePage({ id }: { id: string }) {
       {relaxed && (
         <div className="relaxnote">
           没找到完全符合筛选条件的，先给你翻了这道
-          <button onClick={() => setRelaxed(false)} aria-label="知道了">✕</button>
+          <button className="more" onClick={() => setRelaxed(false)} aria-label="知道了">✕</button>
         </div>
       )}
       <div className="stats">★ {r.rating?.toFixed(1) ?? "—"}　做过 {r.times} 回　{r.category}{r.difficulty && `　${r.difficulty}`}{r.minutes != null && `　⏱${r.minutes}分钟`}</div>
@@ -212,19 +215,23 @@ export default function RecipePage({ id }: { id: string }) {
           <div className="tgrid">
             <div className="tcol">
               <h4>食材准备</h4>
-              {r.ingredients.map((ing, i) => (
-                <button className="ing" key={i} onClick={() =>
-                  setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: r.illust?.ingredients[i] || undefined,
-                    itemKcal: r.nutrition?.per_item?.[i] ?? undefined, grams: ing.grams ?? undefined })}>
-                  <div className="icon">
-                    {r.illust?.ingredients[i]
-                      ? <img src={r.illust.ingredients[i]} alt={ing.name} />
-                      : icon(ing.name)}
-                  </div>
-                  <div className="n">{ing.name}</div>
-                  {ing.amount && <div className="a">{ing.amount}</div>}
-                </button>
-              ))}
+              {r.ingredients.map((ing, i) => {
+                // illust 存在且没 404 才当有插画：404 的走 emoji 兜底，也不把坏 URL 传进小百科
+                const ingIllust = r.illust?.ingredients[i] && !iconErr[i] ? r.illust.ingredients[i] : undefined;
+                return (
+                  <button className="ing" key={i} onClick={() =>
+                    setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: ingIllust,
+                      itemKcal: r.nutrition?.per_item?.[i] ?? undefined, grams: ing.grams ?? undefined })}>
+                    <div className="icon">
+                      {ingIllust
+                        ? <img src={ingIllust} alt={ing.name} onError={() => failIcon(i)} />
+                        : icon(ing.name)}
+                    </div>
+                    <div className="n">{ing.name}</div>
+                    {ing.amount && <div className="a">{ing.amount}</div>}
+                  </button>
+                );
+              })}
               <div className="dimtext" style={{ textAlign: "center", marginTop: 4 }}>点食材看小百科</div>
             </div>
             <div className="tcol">

@@ -92,7 +92,7 @@ export default function Shopping() {
           {pantry.length === 0 && <span className="hint" style={{ marginTop: 0 }}>还没记，把冰箱里的食材加进来</span>}
         </div>
         <div className="row" style={{ marginTop: 8 }}>
-          <input placeholder="鸡蛋、番茄、五花肉（顿号或空格分隔）" value={pantryInput}
+          <input placeholder="鸡蛋、番茄…（顿号 / 空格分隔）" value={pantryInput}
             onChange={e => setPantryInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && addPantry()} />
           <button className="btn ghost" style={{ maxWidth: 90 }} onClick={addPantry}>加入</button>
@@ -144,12 +144,13 @@ export default function Shopping() {
               ))}
             </>
           )}
+          {/* 朱砂纪律：主动作（回到选菜主循环）占朱砂；破坏性的「清空」降为 dim，危险感靠确认弹窗 */}
           <div className="row" style={{ marginTop: 18 }}>
             <button className="btn ghost danger" onClick={clearAll}>清空</button>
             {items.some(x => x.checked) && (
               <button className="btn ghost" onClick={stockBought}>已买的入冰箱</button>
             )}
-            <button className="btn ghost" onClick={() => setPicking(true)}>重新选菜</button>
+            <button className="btn" onClick={() => setPicking(true)}>重新选菜</button>
           </div>
         </>
       )}
