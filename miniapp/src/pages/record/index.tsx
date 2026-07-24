@@ -128,16 +128,18 @@ export default function Record() {
 
   // 取景确认后真正抠图。圆坐标=居中、r 锁在安全值（实测再紧会丢食材）——
   // 圆的真作用是构图对齐（合成的瓷盘是俯拍，菜摆中间才贴得稳），不提升抠图精度
-  async function doCutout(path: string) {
+  // mode=auto 抠成插画盘；mode=photo 留原图（不抠不合成，方裁圆角）
+  async function doCutout(path: string, mode: "auto" | "photo") {
     setFraming(null);
     setCutting(true);
     try {
-      const r = await uploadCutout(path, { mode: "auto", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
+      const r = await uploadCutout(path, { mode, circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
       if (r.results.length === 0) throw new Error("没有返回结果");
       setPicked(r.results[0]);
     } catch (e) {
-      toastErr(e, "这张没抠好");
-      setErr("这张没抠好——可以换一张再试，或者不带图直接记录");
+      toastErr(e, mode === "photo" ? "这张没存上" : "这张没抠好");
+      setErr(mode === "photo" ? "这张没存上——换一张再试，或不带图直接记"
+        : "这张没抠好——可以留原图，或换一张，或不带图直接记录");
     } finally {
       setCutting(false);
     }
@@ -313,13 +315,17 @@ export default function Record() {
         <View className="framedim framedim-t" />
         <View className="framedim framedim-b" />
       </View>
-      <View className="framehint">把菜摆进圈里、从上往下拍，合成的盘子最服帖</View>
+      <View className="framehint">摆中间、从上往下拍，抠成盘子最服帖；也可以留原样那张照片</View>
       <View className="row frameacts">
         <View className="btn ghost" hoverClass="btn-hover"
-          onClick={() => { setFraming(null); choosePhoto(); }}>换一张</View>
-        <View className="btn" hoverClass="btn-hover" onClick={() => doCutout(framing)}>就这么抠 ✎</View>
+          onClick={() => doCutout(framing, "photo")}>留原图</View>
+        <View className="btn" hoverClass="btn-hover" onClick={() => doCutout(framing, "auto")}>抠成盘子 ✎</View>
       </View>
-      <View className="frameskip" hoverClass="btn-hover" onClick={() => setFraming(null)}>不加图，直接记这餐</View>
+      <View className="row framesubacts">
+        <View className="frameskip" hoverClass="btn-hover"
+          onClick={() => { setFraming(null); choosePhoto(); }}>换一张</View>
+        <View className="frameskip" hoverClass="btn-hover" onClick={() => setFraming(null)}>不加图，直接记</View>
+      </View>
     </View>
   ) : null;
 

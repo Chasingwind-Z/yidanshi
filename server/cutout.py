@@ -189,6 +189,28 @@ def _crop_region(raw: bytes, cx: float, cy: float, r: float, pad: float = 1.15) 
     return buf.getvalue()
 
 
+def _square_crop(im: Image.Image, circle: tuple[float, float, float] | None) -> Image.Image:
+    """按取景圆的圆心居中方裁（没圆则画面居中）——留原图当封面用。"""
+    w, h = im.size
+    side = min(w, h)
+    ccx, ccy = (int(circle[0] * w), int(circle[1] * h)) if circle else (w // 2, h // 2)
+    left = max(0, min(w - side, ccx - side // 2))
+    top = max(0, min(h - side, ccy - side // 2))
+    return im.crop((left, top, left + side, top + side))
+
+
+def make_photo_card(raw: bytes, circle: tuple[float, float, float] | None = None,
+                    size: int = CARD_SIZE) -> Image.Image:
+    """留原图：EXIF 摆正 → 方裁 → 圆角落纸底。不抠图不合成——想要真实那张照片当封面时用。"""
+    from PIL import ImageDraw
+    sq = _square_crop(_open(raw).convert("RGB"), circle).resize((size, size), Image.LANCZOS)
+    card = Image.new("RGBA", (size, size), CARD_BG)
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, size, size], radius=int(size * 0.06), fill=255)
+    card.paste(sq, (0, 0), mask)
+    return card
+
+
 def _png(im: Image.Image) -> bytes:
     buf = io.BytesIO()
     im.save(buf, "PNG")
@@ -233,7 +255,10 @@ def process_modes(raw: bytes, modes: list[str], circle: tuple[float, float, floa
     ai_cut: Image.Image | None = precut
     for mode in modes:
         try:
-            if mode == "circle":
+            if mode == "photo":  # 留原图：不抠不合成，方裁圆角落纸底（不依赖 rembg，云端也能出）
+                card = make_photo_card(raw, circle)
+                out[mode] = (_png(card), _png(card))
+            elif mode == "circle":
                 if circle is None:
                     continue
                 cut = _crop_to_circle(raw, *circle)
