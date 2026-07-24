@@ -306,3 +306,70 @@
     opacity: 0;
   }
 }
+
+/* 取景确认层：选图后叠朱砂圆环引导对准盘子。圆是"构图对齐"引导，不改抠图精度。 */
+.framemask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(30, 24, 16, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.frametitle {
+  color: var(--card);
+  font-family: var(--serif);
+  font-size: 19px;
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+}
+.framewrap {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.frameimg {
+  width: 100%;
+  display: block;
+}
+/* 圆环：正方形边框 border-radius 成圆，朱砂描边 + 外扩巨大 box-shadow 压暗圈外 */
+.framering {
+  position: absolute;
+  left: 8%;
+  top: 50%;
+  width: 84%;
+  aspect-ratio: 1 / 1;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 2000px rgba(30, 24, 16, 0.5);
+  box-sizing: border-box;
+}
+/* 上下两条：圆环 aspect-ratio 在部分基础库不生效时的兜底压暗（不影响有 aspect-ratio 的情况） */
+.framedim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8%;
+  background: rgba(30, 24, 16, 0.5);
+}
+.framedim-t { top: 0; }
+.framedim-b { bottom: 0; }
+.framehint {
+  color: var(--card2);
+  font-size: 13.5px;
+  text-align: center;
+  margin: 18px 0 4px;
+  line-height: 1.7;
+}
+.frameacts {
+  width: 100%;
+  max-width: 520px;
+  margin-top: 14px;
+}

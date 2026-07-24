@@ -214,11 +214,20 @@ async function uploadViaCallContainer(path: string, filePath: string, formData: 
  * 拍照/选图后上传 /api/cutout。云端没有 rembg，返回圆框直裁或 SegmentFood
  * 抠图结果（单结果，无需双选）。
  */
-export function uploadCutout(filePath: string, opts: { alreadyCut?: boolean; mode?: string } = {}) {
+export function uploadCutout(
+  filePath: string,
+  opts: { alreadyCut?: boolean; mode?: string; circle?: { cx: number; cy: number; r: number } } = {},
+) {
   const formData: Record<string, string> = {
     already_cut: String(!!opts.alreadyCut),
     mode: opts.mode ?? "auto",
   };
+  // 取景圆相对坐标（对准盘子的构图引导；实测不提升抠图精度，作用是让合成的俯拍盘子贴得稳）
+  if (opts.circle) {
+    formData.cx = String(opts.circle.cx);
+    formData.cy = String(opts.circle.cy);
+    formData.r = String(opts.circle.r);
+  }
   if (!isWeapp) return uploadViaUploadFile(`${LOCAL_BASE}/api/cutout`, filePath, formData);
   if (CLOUDRUN_HTTP_BASE) return uploadViaUploadFile(`${CLOUDRUN_HTTP_BASE}/api/cutout`, filePath, formData);
   return uploadViaCallContainer("/api/cutout", filePath, formData);

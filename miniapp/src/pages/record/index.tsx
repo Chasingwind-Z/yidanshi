@@ -27,6 +27,7 @@ export default function Record() {
   const [recent, setRecent] = useState<{ id: string; name: string }[]>([]);
 
   const [cutting, setCutting] = useState(false);
+  const [framing, setFraming] = useState<string | null>(null);  // 取景确认层：待抠的图路径
   const [picked, setPicked] = useState<CutoutResult | null>(null);
 
   const [recipeId, setRecipeId] = useState("");
@@ -122,9 +123,16 @@ export default function Record() {
     if (!path) return;
     setErr("");
     setPicked(null);
+    setFraming(path);  // 先进取景确认层，对准盘子再抠
+  }
+
+  // 取景确认后真正抠图。圆坐标=居中、r 锁在安全值（实测再紧会丢食材）——
+  // 圆的真作用是构图对齐（合成的瓷盘是俯拍，菜摆中间才贴得稳），不提升抠图精度
+  async function doCutout(path: string) {
+    setFraming(null);
     setCutting(true);
     try {
-      const r = await uploadCutout(path, { mode: "auto" });
+      const r = await uploadCutout(path, { mode: "auto", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
       if (r.results.length === 0) throw new Error("没有返回结果");
       setPicked(r.results[0]);
     } catch (e) {
@@ -294,9 +302,28 @@ export default function Record() {
     ? recipes.filter(r => r.name.includes(pickerKw) || r.category.includes(pickerKw) || r.ingredients.some(i => i.name.includes(pickerKw)))
     : recipes;
 
+  const framingOverlay = framing ? (
+    <View className="framemask" catchMove>
+      <View className="frametitle">对准盘子</View>
+      <View className="framewrap">
+        <Image src={framing} mode="widthFix" className="frameimg" />
+        <View className="framering" />
+        <View className="framedim framedim-t" />
+        <View className="framedim framedim-b" />
+      </View>
+      <View className="framehint">把菜摆进圈里、从上往下拍，合成的盘子最服帖</View>
+      <View className="row frameacts">
+        <View className="btn ghost" hoverClass="btn-hover"
+          onClick={() => { setFraming(null); choosePhoto(); }}>换一张</View>
+        <View className="btn" hoverClass="btn-hover" onClick={() => doCutout(framing)}>就这么抠 ✎</View>
+      </View>
+    </View>
+  ) : null;
+
   return (
     <View className="page">
       {celebrateOverlay}
+      {framingOverlay}
       <Text className="seal">记</Text>
       <View className="h1">记一餐</View>
 
