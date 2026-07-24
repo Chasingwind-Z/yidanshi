@@ -488,7 +488,10 @@ async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(Fals
             focused = cutout._crop_region(raw, *circle) if circle else raw
             seg = segfood.cut(focused)  # 未配凭证/库缺/失败一律返回 None
             if seg is not None:
-                results = cutout.process_modes(raw, modes, circle, precut=seg)
+                # SegmentFood 是菜品分割、倾向连餐具一起抠 → plate 模式跳过瓷盘合成，
+                # 免得「盘上摞盘」；详见 cutout.process_modes 的 precut_with_tableware。
+                results = cutout.process_modes(raw, modes, circle, precut=seg,
+                                               precut_with_tableware=True)
         # 第三级：全链都没抠出来 → 只出圆框直裁，note 说明
         if want_ai and not any(m in ("plate", "auto") for m in results):
             if not results:

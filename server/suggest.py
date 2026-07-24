@@ -326,7 +326,7 @@ def _ai_daily(day: str | None) -> dict | None:
             facts = _build_facts(today, day, recipes, meals, by_id, today_meals)
             out = llm.ask(_AI_PROMPT.replace("{facts_json}",
                                              json.dumps(facts, ensure_ascii=False, separators=(",", ":"))),
-                          timeout=AI_TIMEOUT)
+                          timeout=AI_TIMEOUT, json_mode=True)
             result = _parse_ai(out, by_id, eaten_today, day)
         except Exception:
             result = None
