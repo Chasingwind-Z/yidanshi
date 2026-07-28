@@ -1,10 +1,13 @@
-// 记一餐（移植 web/src/pages/Record.tsx；砍掉：实时取景圆环、圆框拖拽、rembg 双结果
-// 选择、AI 精修、换餐具。云端 /api/cutout 返回圆框直裁或 SegmentFood 抠图，取第一个结果。
+// 记一餐（移植 web/src/pages/Record.tsx；砍掉：rembg 双结果选择、AI 精修、换餐具。
+// 云端 /api/cutout 返回圆框直裁或 SegmentFood 抠图，取第一个结果。
 // 保留：最近做过 chips、新菜、日期 今天/昨天、五星、备注、实测量回填（菜谱越做越精确））
+// 取景圆环 R26 曾锁死居中不给拖（实测圆形预裁不提升抠图精度），R28 真机反馈证伪这个决定——
+// 拍进锅里、菜没摆在画面正中的照片，固定圆根本框不住，改回可拖动/可缩放（movable-view 原生手势）。
 import { useState } from "react";
 import Taro, { useDidShow, useDidHide, useRouter } from "@tarojs/taro";
-import { Image, Input, Picker, ScrollView, Text, Textarea, View } from "@tarojs/components";
+import { Image, Input, MovableArea, MovableView, Picker, ScrollView, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, uploadCutout, type CutoutResult, type Meal, type Recipe } from "../../api";
+import { extractAndApply } from "../../aiExtract";
 import { Loading, Stars } from "../../components/common";
 import "./index.scss";
 
@@ -12,6 +15,17 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const today = () => fmt(new Date());
 const yesterday = () => fmt(new Date(Date.now() - 864e5));
+
+// 取景框固定像素方块（不用 % 布局）：圆心/圆半径的换算全靠这个已知常量，不用再异步查节点尺寸
+const FRAME_VP = 320;
+const RING_FRAC = 0.42;  // 沿用 R25 实测出的安全值：圆再收紧会在裁切阶段丢真实食材
+
+/** 覆盖满 FRAME_VP×FRAME_VP 取景框时的显示尺寸与居中偏移（scale=1 的初始状态，等价 object-fit:cover） */
+function coverFit(w: number, h: number) {
+  const s = Math.max(FRAME_VP / w, FRAME_VP / h);
+  const bw = w * s, bh = h * s;
+  return { bw, bh, x: (FRAME_VP - bw) / 2, y: (FRAME_VP - bh) / 2 };
+}
 
 interface BackfillState {
   recipe: Recipe;
@@ -29,15 +43,24 @@ export default function Record() {
   const [cutting, setCutting] = useState(false);
   const [framing, setFraming] = useState<string | null>(null);  // 取景确认层：待抠的图路径
   const [picked, setPicked] = useState<CutoutResult | null>(null);
+  // 取景圆环可拖动/缩放（zzf 反馈：拍进锅里的菜，居中固定圆根本框不住）——
+  // 圆本身固定在取景框正中央，靠拖动/缩放底下的照片来对准，而不是拖圆本身
+  const [fImgSize, setFImgSize] = useState<{ w: number; h: number } | null>(null);  // 原图像素尺寸
+  const [fBase, setFBase] = useState<{ w: number; h: number } | null>(null);  // 覆盖满取景框时的显示尺寸（scale=1）
+  const [fScale, setFScale] = useState(1);
+  const [fX, setFX] = useState(0);
+  const [fY, setFY] = useState(0);
 
   const [recipeId, setRecipeId] = useState("");
   const [newName, setNewName] = useState("");
   const [newCat, setNewCat] = useState("");
+  const [newMethod, setNewMethod] = useState("");  // 记新菜时顺手贴的做法，可空
   const [date, setDate] = useState(today());
   const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingMethod, setSavingMethod] = useState(false);  // 保存态第二阶段：AI 在整理刚贴的做法
   const [backfill, setBackfill] = useState<BackfillState | null>(null);
   const [celebrate, setCelebrate] = useState(false);  // 保存成功后的盖章微动效（~1.2s 自动散场）
 
@@ -123,17 +146,43 @@ export default function Record() {
     if (!path) return;
     setErr("");
     setPicked(null);
+    setFScale(1);
+    try {
+      // 拿原图像素尺寸算取景框的初始覆盖尺寸/居中偏移；失败就退回旧的居中默认圆（见 currentCircle）
+      const info = await Taro.getImageInfo({ src: path });
+      const { bw, bh, x, y } = coverFit(info.width, info.height);
+      setFImgSize({ w: info.width, h: info.height });
+      setFBase({ w: bw, h: bh });
+      setFX(x);
+      setFY(y);
+    } catch {
+      setFImgSize(null);
+      setFBase(null);
+    }
     setFraming(path);  // 先进取景确认层，对准盘子再抠
   }
 
-  // 取景确认后真正抠图。圆坐标=居中、r 锁在安全值（实测再紧会丢食材）——
-  // 圆的真作用是构图对齐（合成的瓷盘是俯拍，菜摆中间才贴得稳），不提升抠图精度
+  // 圆环固定在取景框正中央——靠拖动/缩放底下的照片来对准，不是拖圆本身。
+  // 把当前的拖拽/缩放状态换算成原图坐标系里的参考圆（cx/cy 是原图宽高比例，r 是短边比例，
+  // 与 server/cutout.py 的 _crop_to_circle 约定一致）；拿不到原图尺寸就退回旧的居中默认值。
+  function currentCircle(): { cx: number; cy: number; r: number } {
+    if (!fImgSize || !fBase) return { cx: 0.5, cy: 0.5, r: RING_FRAC };
+    const dispW = fBase.w * fScale, dispH = fBase.h * fScale;
+    const ringCx = FRAME_VP / 2, ringCy = FRAME_VP / 2, ringR = FRAME_VP * RING_FRAC;
+    const cx = (ringCx - fX) / dispW;
+    const cy = (ringCy - fY) / dispH;
+    const natScale = dispW / fImgSize.w;  // 屏幕像素 → 原图像素的缩放系数（等比，dispH/fImgSize.h 同值）
+    const r = ringR / natScale / Math.min(fImgSize.w, fImgSize.h);
+    return { cx, cy, r };
+  }
+
   // mode=auto 抠成插画盘；mode=photo 留原图（不抠不合成，方裁圆角）
   async function doCutout(path: string, mode: "auto" | "photo") {
+    const circle = currentCircle();
     setFraming(null);
     setCutting(true);
     try {
-      const r = await uploadCutout(path, { mode, circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
+      const r = await uploadCutout(path, { mode, circle });
       if (r.results.length === 0) throw new Error("没有返回结果");
       setPicked(r.results[0]);
     } catch (e) {
@@ -149,6 +198,7 @@ export default function Record() {
     setPicked(null);
     setRecipeId("");
     setNewName("");
+    setNewMethod("");
     setDate(today());
     setRating(null);
     setNote("");
@@ -180,13 +230,26 @@ export default function Record() {
       // 今日荐预热：记一餐会让 AI 荐的缓存失效，趁盖章动画顺手让服务端先算——
       // fire-and-forget，结果丢弃，失败无感（首页下次打开就不用等 20 秒了）
       api.suggest().catch(() => {});
-      // 盖章庆祝：保存一成功就落印（纯 CSS 动画），期间下面的回填检查照常进行不被阻塞
+      // 盖章庆祝：保存一成功就落印（纯 CSS 动画），期间下面的回填检查/做法整理照常进行不被阻塞
       const CELEBRATE_MS = 1250;
       const stamped = Date.now();
       setCelebrate(true);
       const afterStamp = (fn?: () => void) =>
         setTimeout(() => { setCelebrate(false); fn?.(); }, Math.max(0, CELEBRATE_MS - (Date.now() - stamped)));
+      // 新菜顺手贴了做法：立刻整理写回，不用先保存完再跳一次菜谱页去补
+      // （zzf 反馈：为什么不能顺便记做法，非要专门再去一趟）。整理失败不挡路，
+      // 照旧走下面「去补做法」的桥——methodApplied 只用来决定还要不要问那句话。
+      let methodApplied = false;
+      if (!recipeId && meal.recipe_id && newMethod.trim() !== "") {
+        setSavingMethod(true);
+        try {
+          await extractAndApply(meal.recipe_id, newMethod.trim(), "");
+          methodApplied = true;
+        } catch { /* AI 没整理出来：静默降级，走后面的「去补做法」桥，不是死路 */ }
+        setSavingMethod(false);
+      }
       // 实测量回填：这道菜若有「适量」类模糊量，轻提示补一笔（可一键跳过），菜谱越做越精确
+      // 用整理做法后的最新食材查——methodApplied 的话食材已经不是空壳了
       try {
         const rec = await api.recipe(meal.recipe_id);
         const fuzzy = rec.ingredients
@@ -199,8 +262,13 @@ export default function Record() {
           return;
         }
       } catch { /* 回填是锦上添花，失败不挡路 */ }
-      // 新菜是"空壳"（只有名字+分类）：盖完章搭一座桥去补做法——不打断记录（可跳过），
-      // 但别让人不知道去哪补（zzf 真机反馈：记餐时找不到写做法的地方）
+      // 做法已经顺手整理完了，不用再问一遍「去补做法」——直接收尾
+      if (methodApplied) {
+        afterStamp(done);
+        return;
+      }
+      // 新菜是"空壳"（只有名字+分类，且没贴做法/AI 没整理出来）：盖完章搭一座桥去补做法——
+      // 不打断记录（可跳过），但别让人不知道去哪补
       if (!recipeId && meal.recipe_id) {
         afterStamp(async () => {
           const { confirm } = await Taro.showModal({
@@ -310,12 +378,25 @@ export default function Record() {
       <View className="frameclose" hoverClass="btn-hover" onClick={() => setFraming(null)}>✕</View>
       <View className="frametitle">对准盘子</View>
       <View className="framewrap">
-        <Image src={framing} mode="widthFix" className="frameimg" />
+        {fBase ? (
+          <MovableArea className="framearea">
+            <MovableView className="framemove" direction="all" scale scaleMin={1} scaleMax={4}
+              x={fX} y={fY} scaleValue={fScale}
+              style={{ width: `${fBase.w}px`, height: `${fBase.h}px` }}
+              onChange={e => { setFX(e.detail.x); setFY(e.detail.y); }}
+              onScale={e => { setFScale(e.detail.scale); setFX(e.detail.x); setFY(e.detail.y); }}>
+              <Image src={framing} mode="scaleToFill" className="frameimg-mv" />
+            </MovableView>
+          </MovableArea>
+        ) : (
+          // 拿不到原图尺寸时的退化展示：静态居中裁一张，不给拖拽（仍能抠图，只是圆不能对）
+          <Image src={framing} mode="aspectFill" className="frameimg" />
+        )}
         <View className="framering" />
-        <View className="framedim framedim-t" />
-        <View className="framedim framedim-b" />
       </View>
-      <View className="framehint">摆中间、从上往下拍，抠成盘子最服帖；也可以留原样那张照片</View>
+      <View className="framehint">
+        {fBase ? "拖动、双指捏合缩放，把菜挪到圈里；也可以留原样那张照片" : "摆中间、从上往下拍，抠成盘子最服帖；也可以留原样那张照片"}
+      </View>
       <View className="row frameacts">
         <View className="btn ghost" hoverClass="btn-hover"
           onClick={() => doCutout(framing, "photo")}>留原图</View>
@@ -378,6 +459,11 @@ export default function Record() {
             </View>
           </View>
           <View className="switchpick" onClick={openPicker}>‹ 从已有食单里选</View>
+          {/* 顺手记做法：不用先存了新菜再专门跑一趟菜谱页去补——贴了就在保存时一起整理 */}
+          <View className="f">做法（可选，贴教程链接/文案，AI 帮你整理；不写也行，之后随时能补）</View>
+          <Textarea className="ta" placeholderClass="ph" value={newMethod} maxlength={-1}
+            onInput={e => setNewMethod(e.detail.value)}
+            placeholder="粘贴抖音/下厨房链接，或整段文字教程" />
         </View>
       ) : (
         <View className="dishpick" hoverClass="btn-hover" onClick={openPicker}>
@@ -429,7 +515,7 @@ export default function Record() {
       <View className="acts">
         <View className={`btn ${saving || cutting ? "disabled" : ""}`} hoverClass="btn-hover"
           onClick={() => { if (!saving && !cutting) save(); }}>
-          {saving ? "保存中…" : "记下这一餐"}
+          {savingMethod ? "AI 整理做法中…" : saving ? "保存中…" : "记下这一餐"}
         </View>
       </View>
 

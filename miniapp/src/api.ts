@@ -284,6 +284,9 @@ export const api = {
   aiExtract: (text: string, source: string, url?: string) =>
     request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string }>(
       "/api/ai/extract", "POST", { text, source, url }),
+  /** 逐张生成插画（食材图标/步骤图），前端按张循环调用以显示进度，与 web/src/api.ts 一致 */
+  aiIllustrate: (recipe_id: string, kind: "ing" | "step", index: number) =>
+    request<{ url: string }>("/api/ai/illustrate", "POST", { recipe_id, kind, index }),
   config: () => request<ConfigPayload>("/api/config"),
   saveConfig: (c: object) => request<ConfigPayload>("/api/config", "PUT", c),
 };

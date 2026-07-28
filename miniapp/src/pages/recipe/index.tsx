@@ -1,10 +1,12 @@
-// 菜谱详情（移植 web/src/pages/Recipe.tsx；砍掉：插画生成按钮、导出长图、完整编辑器。
-// 已有插画照常展示；食材小百科（两行营养对照 + 粗估/无法折算三分支文案）逻辑照抄 web。
+// 菜谱详情（移植 web/src/pages/Recipe.tsx；砍掉：导出长图、完整编辑器（改一笔轻表单代替）。
+// 插画生成按钮 R28 补齐（此前漏移植，zzf 反馈"为什么没有生成卡通做法图"）——逐张调用与
+// web genAll 同构；食材小百科（两行营养对照 + 粗估/无法折算三分支文案）逻辑照抄 web。
 // P1-3：没录做法的菜不再指去 Web——AI 代录（贴链接/文案）+ 手动补几笔两个补录入口）
 import { useEffect, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
 import { Image, Input, ScrollView, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, type IngInfo, type Recipe } from "../../api";
+import { extractAndApply } from "../../aiExtract";
 import { Loading, PosterSheet } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
@@ -179,11 +181,15 @@ export default function RecipePage() {
   const [mSaving, setMSaving] = useState(false);
   // 从朱批点进来时要定位到哪个食材（ScrollView scrollIntoView 找的就是这个行的 id）
   const [hitIngName, setHitIngName] = useState("");
+  // 插画教程卡：逐张生成（每张几十秒），与 web genAll 同构；canIllust 决定按钮是否露出
+  const [canIllust, setCanIllust] = useState(false);
+  const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
 
   useEffect(() => {
     api.recipe(id).then(setR).catch(() => setMissing404(true));
     setPortion(1);
   }, [id]);
+  useEffect(() => { api.aiStatus().then(s => setCanIllust(!!s.imagegen?.available)).catch(() => {}); }, []);
 
   function openManual(highlight?: string) {
     if (!r) return;
@@ -202,25 +208,7 @@ export default function RecipePage() {
     setAiErr("");
     setAiBusy(true);
     try {
-      // 粘的是分享链接（抖音口令等）→ 服务端抓文案；纯文字 → 直接整理（判定照抄 web Recipe.tsx）
-      const link = raw.match(/https?:\/\/\S+/)?.[0];
-      const isLinkMode = !!link && raw.replace(/https?:\/\/\S+/, "").trim().length < 80;
-      // 本地 claude-cli 可能 30s+：60s 还没回就温和失败（不重试，避免重复写）
-      const timeout = new Promise<never>((_, rej) =>
-        setTimeout(() => rej(new Error("管家研读超时了——稍后再试，或先手动补几笔")), 60000));
-      const x = await Promise.race([
-        api.aiExtract(isLinkMode ? "" : raw, r.source, isLinkMode ? link : undefined),
-        timeout,
-      ]);
-      // PUT 是 merge 语义（body 带的字段覆盖）：只写做法相关字段；菜名/分类是这道菜的身份，不让 AI 改
-      const patch: Partial<Recipe> = { id, ingredients: x.ingredients, steps: x.steps, tips: x.tips };
-      if (x.kcal != null) patch.kcal = x.kcal;
-      if (x.minutes != null) patch.minutes = x.minutes;
-      if (x.difficulty) patch.difficulty = x.difficulty;  // 翻牌子的「只要简单省事的」靠它
-      // servings 不收：几餐由记一餐后的回填流程问本人，AI 猜的分餐数会带偏 kcal/餐 显示
-      if (isLinkMode && link && r.source === "") patch.source = link;  // 顺手补上教程来源（不覆盖已有）
-      await api.saveRecipe(patch);
-      setR(await api.recipe(id));
+      setR(await extractAndApply(id, raw, r.source));
       setFill("");
       setAiText("");
     } catch (e) {
@@ -318,6 +306,29 @@ export default function RecipePage() {
   if (!r) return <View className="page"><Loading /></View>;
 
   const hasTutorial = r.ingredients.length > 0 || r.steps.length > 0;
+  // 与 web 完全同构：illust 数组里空字符串的位置就是还没画的那张
+  const missing = !r.illust ? [] : [
+    ...r.illust.ingredients.map((u, i) => (!u && r.ingredients[i] ? { kind: "ing" as const, index: i + 1, label: r.ingredients[i].name } : null)),
+    ...r.illust.steps.map((u, i) => (!u ? { kind: "step" as const, index: i + 1, label: `步骤 ${i + 1}` } : null)),
+  ].filter((x): x is { kind: "ing" | "step"; index: number; label: string } => x !== null);
+
+  // 逐张生成：每张成功后刷新 r（下一轮 missing 会跟着收窄）——中途退出小程序也不怕，
+  // 未生成的还是 missing，回来再点一次接着补，不需要额外断点续传逻辑
+  async function genAll() {
+    setGen({ running: true, msg: "" });
+    for (let k = 0; k < missing.length; k++) {
+      const it = missing[k];
+      setGen({ running: true, msg: `正在画「${it.label}」（${k + 1}/${missing.length}），每张几十秒…` });
+      try {
+        await api.aiIllustrate(id, it.kind, it.index);
+        setR(await api.recipe(id));
+      } catch (e) {
+        setGen({ running: false, msg: `画到「${it.label}」时失败：${(e as Error).message}` });
+        return;
+      }
+    }
+    setGen({ running: false, msg: "" });
+  }
   return (
     <View className="page">
       {r.cover !== "" && !imgErr.cover && (
@@ -422,6 +433,16 @@ export default function RecipePage() {
               })}
             </View>
           )}
+        </View>
+      )}
+
+      {canIllust && missing.length > 0 && (
+        <View className="illustgen">
+          <View className={`btn ghost ${gen.running ? "disabled" : ""}`} hoverClass="btn-hover"
+            onClick={() => { if (!gen.running) genAll(); }}>
+            {gen.running ? gen.msg : `✨ 生成插画教程卡（${missing.length} 张）`}
+          </View>
+          {!gen.running && gen.msg !== "" && <View className="err">{gen.msg}</View>}
         </View>
       )}
 
