@@ -354,10 +354,12 @@ export default function RecipePage() {
               <View className="th4">食材准备</View>
               {r.ingredients.length > 0 && (
                 <View className="portionbar">
-                  {[1, 2, 3].map(p => (
-                    <View key={p} className={`chip${portion === p ? " on" : ""}`} hoverClass="btn-hover"
-                      onClick={() => setPortion(p)}>{p}×</View>
-                  ))}
+                  <Text className="dimtext">份量</Text>
+                  <View className={`stepbtn${portion <= 0.5 ? " off" : ""}`} hoverClass="btn-hover"
+                    onClick={() => portion > 0.5 && setPortion(p => Math.max(0.5, Math.round((p - 0.5) * 10) / 10))}>－</View>
+                  <Text className="portionval">{portion}×</Text>
+                  <View className={`stepbtn${portion >= 5 ? " off" : ""}`} hoverClass="btn-hover"
+                    onClick={() => portion < 5 && setPortion(p => Math.min(5, Math.round((p + 0.5) * 10) / 10))}>＋</View>
                   {portion !== 1 && <Text className="dimtext">量按 {portion} 倍算，只是看看，不改菜谱</Text>}
                 </View>
               )}

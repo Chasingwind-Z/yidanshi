@@ -75,18 +75,35 @@
   letter-spacing: 2px;
   border-bottom: 1px solid var(--line-box);
 }
-/* 份量换算：纯展示倍数，不写回菜谱 */
+/* 份量换算：纯展示倍数，不写回菜谱。步进器而非固定挡位——想要几倍自己点出来，不用弹键盘 */
 .portionbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   margin: 0 0 12px;
 }
-.portionbar .chip.on {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
+.stepbtn {
+  width: 52rpx;
+  height: 52rpx;
+  border: 1px solid var(--line-box);
+  border-radius: 8rpx;
+  background: rgba(47, 42, 34, 0.03);
+  color: var(--ink);
+  font-size: 30rpx;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.stepbtn.off {
+  opacity: 0.35;
+}
+.portionval {
+  font-family: var(--mono);
+  font-size: 13px;
+  min-width: 30px;
+  text-align: center;
 }
 .ing {
   display: flex;

@@ -242,9 +242,12 @@ export default function RecipePage({ id }: { id: string }) {
               <h4>食材准备</h4>
               {r.ingredients.length > 0 && (
                 <div className="portionbar">
-                  {[1, 2, 3].map(p => (
-                    <button key={p} className={`chip${portion === p ? " on" : ""}`} onClick={() => setPortion(p)}>{p}×</button>
-                  ))}
+                  <span className="dimtext">份量</span>
+                  <button className="stepbtn" disabled={portion <= 0.5}
+                    onClick={() => setPortion(p => Math.max(0.5, Math.round((p - 0.5) * 10) / 10))}>－</button>
+                  <span className="portionval">{portion}×</span>
+                  <button className="stepbtn" disabled={portion >= 5}
+                    onClick={() => setPortion(p => Math.min(5, Math.round((p + 0.5) * 10) / 10))}>＋</button>
                   {portion !== 1 && <span className="dimtext">量按 {portion} 倍算，只是看看，不改菜谱</span>}
                 </div>
               )}
