@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Order, type Recipe, type Suggestion } from "../api";
+import ConfirmSheet from "../confirm";
 import { mergeShopping } from "../shop";
 
 export default function Menu() {
@@ -17,6 +18,8 @@ export default function Menu() {
   const [quick30, setQuick30] = useState(() => localStorage.getItem("fan_quick30") === "1");
   const [easy, setEasy] = useState(() => localStorage.getItem("fan_easy") === "1");
   const [pantryFirst, setPantryFirst] = useState(() => localStorage.getItem("fan_pantry") === "1");
+  // 「先看看示例食单」其实是真实写入（往食单里落 7 道菜，不是无痕预览）——落笔前必须确认
+  const [confirmSeed, setConfirmSeed] = useState(false);
 
   function flip() {
     localStorage.setItem("fan_avoid7", avoid7 ? "1" : "0");
@@ -125,10 +128,13 @@ export default function Menu() {
       )}
       {recipes.length === 0 ? (
         <div className="empty">
+          {/* 定位句与小程序空态同文（本轮主题就是双端对齐，别自己造新的不一致） */}
+          <div className="empty-tagline">你自己的做饭成长档案：记下吃过的，翻出下次想吃的</div>
           食单还空着
           <div className="row" style={{ marginTop: 20, maxWidth: 340, marginInline: "auto" }}>
             <a className="btn" href="#/record">记下第一顿饭</a>
-            <button className="btn ghost" onClick={() => api.seedExamples().then(load)}>先看看示例食单</button>
+            {/* 「看看」是误导动词——它真的会写入 7 道菜，按钮说实话 + 落笔前确认一次（与小程序同构） */}
+            <button className="btn ghost" onClick={() => setConfirmSeed(true)}>摆 7 道示例菜看看</button>
           </div>
         </div>
       ) : (
@@ -167,6 +173,16 @@ export default function Menu() {
           </div>
         </div>
         </>
+      )}
+      {confirmSeed && (
+        <ConfirmSheet
+          title="摆示例菜"
+          content="会往食单里放 7 道示例菜，随时可一道道删掉"
+          confirmText="摆上"
+          cancelText="先不了"
+          onConfirm={() => { setConfirmSeed(false); api.seedExamples().then(load).catch(e => alert((e as Error).message || "没摆成功，再试一次")); }}
+          onCancel={() => setConfirmSeed(false)}
+        />
       )}
     </>
   );

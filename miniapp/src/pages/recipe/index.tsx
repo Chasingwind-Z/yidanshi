@@ -148,7 +148,10 @@ export default function RecipePage() {
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState("");
-  const [mIngs, setMIngs] = useState<{ name: string; amount: string; grams: number | null }[]>([]);
+  // amount0 = 打开表单时的原始用量文案。克重（grams）是跟着某一句用量算出来的，
+  // 用量被改了旧克重就不再可信——存回时按 amount0 比对，改过的行丢弃陈旧克重（宁可留白也不装懂）。
+  // 小程序这张表单没有克重输入框（web 编辑器有），所以只能这样兜。
+  const [mIngs, setMIngs] = useState<{ name: string; amount: string; grams: number | null; amount0: string }[]>([]);
   const [mSteps, setMSteps] = useState<string[]>([]);
   const [mSaving, setMSaving] = useState(false);
 
@@ -159,8 +162,8 @@ export default function RecipePage() {
   function openManual() {
     if (!r) return;
     // 预填已有食材（grams 跟着行走，存回不丢克重）；空表给三行起步
-    const ings = r.ingredients.map(x => ({ name: x.name, amount: x.amount, grams: x.grams ?? null }));
-    while (ings.length < 3) ings.push({ name: "", amount: "", grams: null });
+    const ings = r.ingredients.map(x => ({ name: x.name, amount: x.amount, grams: x.grams ?? null, amount0: x.amount }));
+    while (ings.length < 3) ings.push({ name: "", amount: "", grams: null, amount0: "" });
     setMIngs(ings);
     setMSteps(r.steps.length > 0 ? [...r.steps] : ["", "", ""]);
     setFill("manual");
@@ -210,7 +213,10 @@ export default function RecipePage() {
   async function manualSave() {
     if (!r || mSaving) return;
     const ings = mIngs
-      .map(x => ({ name: x.name.trim(), amount: x.amount.trim(), grams: x.grams }))
+      // 用量被改过的行丢弃旧克重：那个数是按原来那句用量算的（「2个」→110g），
+      // 改成「3个」还留 110g，会让营养折算给出一个自信的错数（IngredientSheet 会写「本菜行已按 110g 折算」）
+      .map(x => ({ name: x.name.trim(), amount: x.amount.trim(),
+                   grams: x.amount.trim() === x.amount0.trim() ? x.grams : null }))
       .filter(x => x.name !== "");
     const steps = mSteps.map(s => s.trim()).filter(s => s !== "");
     if (ings.length === 0 && steps.length === 0) {
@@ -397,6 +403,11 @@ export default function RecipePage() {
         {hasTutorial && (
           <View className="btn ghost" hoverClass="btn-hover" onClick={openCard}>教程卡（长按可存图）</View>
         )}
+        {/* M1：有步骤的菜此前没有任何编辑入口（补录墙只在 steps===0 时出现）——
+            补一个轻量「改一笔」，复用 openManual 并预填现有食材/步骤，别让用户从空表单重打一遍 */}
+        {r.steps.length > 0 && (
+          <View className="btn ghost" hoverClass="btn-hover" onClick={openManual}>改一笔</View>
+        )}
         <View className="btn ghost danger" hoverClass="btn-hover" onClick={delRecipe}>删除这道菜</View>
       </View>
       {ingSheet && <IngredientSheet {...ingSheet} onClose={() => setIngSheet(null)} />}
@@ -425,7 +436,8 @@ export default function RecipePage() {
         <View className="sheetscrim" catchMove onClick={() => setFill("")}>
           <View className="ingsheet fillsheet" onClick={e => e.stopPropagation()}>
             <View className="fillhead">
-              <Text className="filltitle">手动补几笔</Text>
+              {/* 同一张轻表单两处复用：没步骤时是「补几笔」，已有步骤时是「改一笔」——标题跟着场景走 */}
+              <Text className="filltitle">{r.steps.length > 0 ? "改一笔" : "手动补几笔"}</Text>
               <View className="close" onClick={() => setFill("")}>✕</View>
             </View>
             <ScrollView scrollY className="fillscroll">
@@ -449,7 +461,7 @@ export default function RecipePage() {
                 </View>
               ))}
               <View className="fill-add" hoverClass="btn-hover"
-                onClick={() => setMIngs(a => [...a, { name: "", amount: "", grams: null }])}>＋ 再加一行食材</View>
+                onClick={() => setMIngs(a => [...a, { name: "", amount: "", grams: null, amount0: "" }])}>＋ 再加一行食材</View>
               <View className="f">步骤（一行一步，空行不算）</View>
               {mSteps.map((s, i) => (
                 <View key={i} className="fillrow">
@@ -465,7 +477,7 @@ export default function RecipePage() {
                 onClick={() => setMSteps(a => [...a, ""])}>＋ 再加一步</View>
             </ScrollView>
             <View className={`btn fillgo ${mSaving ? "disabled" : ""}`} hoverClass="btn-hover"
-              onClick={manualSave}>{mSaving ? "保存中…" : "补好了，保存"}</View>
+              onClick={manualSave}>{mSaving ? "保存中…" : r.steps.length > 0 ? "改好了，保存" : "补好了，保存"}</View>
           </View>
         </View>
       )}

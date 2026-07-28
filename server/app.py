@@ -232,9 +232,12 @@ def recipes():
     for r in storage.list_recipes():
         s = stats.get(r["id"], {})
         whole, src = nutrition.effective(r)
+        # 显示口径与「收走示例菜」的删除口径对齐：做过 ≥1 次就不再算示例（哪怕内容签名没改过）。
+        # 注意别把 times 判定塞进 _is_demo 本体——remove_seed_examples() 就是靠纯签名版 _is_demo
+        # 分离出「内容仍是示例」与「已被使用」两件事，才能算出 kept 计数；这里在调用处叠一层就够。
         out.append({**r, "times": s.get("times", 0), "rating": s.get("rating"),
                     "kcal_effective": nutrition.per_serving_kcal(r), "kcal_whole": whole, "kcal_source": src,
-                    "demo": _is_demo(r)})
+                    "demo": _is_demo(r) and s.get("times", 0) == 0})
     return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
 
 

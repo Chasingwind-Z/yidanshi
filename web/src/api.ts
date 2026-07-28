@@ -15,6 +15,11 @@ export interface Order {
 }
 /** 每日荐（规则版，主人接口）：0-2 条；请求失败/空数组 → 整条不渲染 */
 export interface Suggestion { recipe_id: string; name: string; reason: string }
+/** 客人视角的菜（/api/guest/menu 的裁剪字段；kcal 已是每餐口径） */
+export interface GuestDish {
+  id: string; name: string; category: string; cover: string;
+  minutes?: number | null; servings?: number; times: number; rating: number | null; kcal?: number | null;
+}
 /** 周报（行为化契约）：empty:true 时只渲染 line 一句；可选行有则显示、无则整行不出 */
 export interface WeekReport {
   empty: boolean; line: string; meals: number; days: number; delta_meals: number | null;
@@ -82,6 +87,20 @@ export const api = {
   seedExamples: () => j<{ added: number }>(fetch("/api/seed-examples", { method: "POST" })),
   guestLink: (reset = false) =>
     j<{ token: string }>(fetch(`/api/guest-link${reset ? "?reset=true" : ""}`, { method: "POST" })),
+  guestMenu: (t: string) =>
+    j<{ categories: string[]; recipes: GuestDish[] }>(fetch(`/api/guest/menu?t=${encodeURIComponent(t)}`)),
+  // items 带 name：菜若已被主人收回，服务端 dropped 里才能回显菜名而不是裸 id
+  // client_id：点单幂等键——同 client_id 重试返回相同回执，弱网下不再重复下单；响应 id 用于客人回执查状态
+  guestOrder: (t: string, from: string, note: string, items: { id: string; note: string; name?: string }[], clientId?: string) =>
+    j<{ ok: boolean; id: string | null; accepted: { recipe_id: string; name: string; note: string }[]; dropped: string[] }>(
+      fetch("/api/guest/order", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t, from, note, items, client_id: clientId }),
+      })),
+  // 客人查自己单的状态（公开口，凭口令）：只回 done/done_date，单内容不回传
+  guestOrderStatus: (t: string, ids: string[]) =>
+    j<{ orders: { id: string; done: boolean; done_date?: string }[] }>(
+      fetch(`/api/guest/order-status?t=${encodeURIComponent(t)}&ids=${encodeURIComponent(ids.join(","))}`)),
   orders: () => j<Order[]>(fetch("/api/orders")),
   orderDone: (id: string, done = true) => j<Order>(fetch(`/api/orders/${id}`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ done }),

@@ -209,6 +209,8 @@ export default function Index() {
       {recipes.length === 0 ? (
         <View className="empty">
           <View className="empty-ico">🍚</View>
+          {/* M3：新人第一屏没讲清「这是什么」——加一句极短定位句，不做教程式引导 */}
+          <View className="empty-tagline">你自己的做饭成长档案：记下吃过的，翻出下次想吃的</View>
           <Text>食单还空着</Text>
           <View className="row empty-acts">
             <View className="btn" hoverClass="btn-hover"

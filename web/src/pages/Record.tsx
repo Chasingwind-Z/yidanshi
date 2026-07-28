@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Meal, type Recipe } from "../api";
+import ConfirmSheet from "../confirm";
 
 const fmt = (d: Date) => d.toLocaleDateString("sv");  // YYYY-MM-DD
 const today = () => fmt(new Date());
@@ -137,6 +138,8 @@ export default function Record({ presetId }: { presetId?: string } = {}) {
   const [saving, setSaving] = useState(false);
   const [celebrate, setCelebrate] = useState(false);  // 保存成功后的盖章微动效（~1.2s 自动散场，与小程序 record 同构）
   const [backfill, setBackfill] = useState<{ recipe: Recipe; items: { i: number; name: string; amount: string; value: string }[]; askServings: boolean; servings: number | null } | null>(null);
+  // 新菜是空壳（只有名字+分类）时，盖完章搭一座桥去补做法——记录的是新菜 id
+  const [bridge, setBridge] = useState<string | null>(null);
 
   // 餐具：choice=auto 时按菜的品类自动匹配（汤面粥→深碗、甜点→浅盘、其余→平盘），也可手动指定
   const TW_MATCH: Record<string, string> = { 饭粥: "bowl", 面点: "bowl", 羹汤: "bowl", 甜点: "saucer" };
@@ -261,6 +264,12 @@ export default function Record({ presetId }: { presetId?: string } = {}) {
           return;
         }
       } catch { /* 回填是锦上添花，失败不挡路 */ }
+      // 新菜是「空壳」（只有名字+分类）：盖完章搭一座桥去补做法——不打断记录（可跳过），
+      // 但别让人不知道去哪补（zzf 真机反馈：记餐时找不到写做法的地方；回填优先级更高，上面已 return）
+      if (!recipeId && meal.recipe_id) {
+        afterStamp(() => setBridge(meal.recipe_id));
+        return;
+      }
       afterStamp(() => { location.hash = "#/timeline"; });
     } catch (e) {
       setErr((e as Error).message);
@@ -339,6 +348,16 @@ export default function Record({ presetId }: { presetId?: string } = {}) {
   return (
     <>
       {celebrateOverlay}
+      {bridge && (
+        <ConfirmSheet
+          title="新菜已立档"
+          content="做法可以贴教程链接让 AI 录，或手动补几笔——现在去？"
+          confirmText="去补做法"
+          cancelText="下次再说"
+          onConfirm={() => { location.hash = `#/recipe/${bridge}`; }}
+          onCancel={() => { location.hash = "#/timeline"; }}
+        />
+      )}
       <span className="seal">记</span>
       <h1>记一餐</h1>
 

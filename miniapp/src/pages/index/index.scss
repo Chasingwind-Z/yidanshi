@@ -307,6 +307,15 @@
   margin-right: auto;
 }
 
+/* M3：首屏定位句——比状态行（「食单还空着」）更值得读一眼，但不与 h1 抢分量 */
+.empty-tagline {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  color: var(--ink);
+  line-height: 1.7;
+  margin-bottom: 10px;
+}
+
 /* 搜索空态建档：ghost 一枚，接住「想记这道菜」的念头 */
 .quickadd {
   margin-top: 16px;

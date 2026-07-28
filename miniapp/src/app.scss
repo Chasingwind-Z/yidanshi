@@ -103,8 +103,9 @@ body {
   box-shadow: none;
 }
 .btn.danger {
-  border-color: rgba(176, 57, 43, 0.5);
-  color: var(--accent);
+  /* 朱砂纪律：主动作占朱砂；破坏性的「删除/重置」降为 dim（对齐 web/src/index.css:228） */
+  border-color: var(--line-box);
+  color: var(--dim);
 }
 .btn.disabled {
   opacity: 0.45;

@@ -17,3 +17,6 @@ dist/
 # env & misc
 .env
 .DS_Store
+
+# multi-agent working notes (local only)
+scratchpad/

@@ -228,7 +228,9 @@ export default function RecipePage({ id }: { id: string }) {
                         : icon(ing.name)}
                     </div>
                     <div className="n">{ing.name}</div>
-                    {ing.amount && <div className="a">{ing.amount}</div>}
+                    {/* 有人类可读用量就显示它；没有但录了克重（编辑器选库内食材时自动补的）就显示约估克重——
+                        克重录了却什么都不显示，会让人以为量没记上（同 IngredientSheet 里的显示口径） */}
+                    {(ing.amount || ing.grams != null) && <div className="a">{ing.amount || `约${ing.grams}g`}</div>}
                   </button>
                 );
               })}
