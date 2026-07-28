@@ -1,6 +1,7 @@
 import { toPng } from "html-to-image";
 import { useEffect, useRef, useState } from "react";
-import { api, type Recipe } from "../api";
+import { api, type Meal, type Recipe } from "../api";
+import ConfirmSheet from "../confirm";
 
 const EMOJI: [RegExp, string][] = [
   [/蛋/, "🥚"], [/玉米/, "🌽"], [/番茄|西红柿/, "🍅"], [/土豆|红薯|薯/, "🥔"], [/萝卜/, "🥕"],
@@ -142,6 +143,12 @@ export default function RecipePage({ id }: { id: string }) {
   const [highlightIng, setHighlightIng] = useState<string | null>(null);
   // 份量换算：纯展示倍数，不写回菜谱、不影响上面「整锅 kcal」的记录口径；离开页面自动复位
   const [portion, setPortion] = useState(1);
+  // 历史照片：每次记餐带的图本来就是「可选+带日期」的，缺的只是在菜谱页把它们拣出来看——
+  // 不新增字段，直接从 meals 里按 recipe_id 过滤（数据量个人规模，客户端筛没有性能问题）
+  const [photos, setPhotos] = useState<Meal[]>([]);
+  const [coverBusy, setCoverBusy] = useState(false);  // 「换封面」在传新照片，避免重复点
+  const [coverConfirm, setCoverConfirm] = useState<string | null>(null);  // 待确认设为封面的历史照片 url
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const [canIllust, setCanIllust] = useState(false);
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -168,7 +175,40 @@ export default function RecipePage({ id }: { id: string }) {
       setExporting(false);
     }
   }
-  useEffect(() => { api.recipe(id).then(setR).catch(() => setMissing404(true)); setPortion(1); }, [id]);
+  useEffect(() => {
+    api.recipe(id).then(setR).catch(() => setMissing404(true));
+    api.meals().then(ms => setPhotos(
+      ms.filter(m => m.recipe_id === id && m.photo_card !== "").sort((a, b) => b.date.localeCompare(a.date)),
+    )).catch(() => {});
+    setPortion(1);
+  }, [id]);
+
+  // 拍/选一张新照片直接当封面：走跟记餐一样的抠图，但用默认居中圆，不进精细取景层——
+  // 这只是换个封面图，没必要跟「记一餐」那套精确对准盘子的流程一样重
+  async function pickNewCover(file: File) {
+    setCoverBusy(true);
+    try {
+      const cut = await api.cutout(file, { mode: "auto", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
+      if (cut.results.length === 0) throw new Error("没有返回结果");
+      setR(await api.saveRecipe({ id, cover: cut.results[0].card }));
+    } catch (e) {
+      alert((e as Error).message || "这张没抠好，换一张再试");
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  // 从历史照片里选一张设为封面：直接复用已经拍好的图，不用重新拍
+  async function confirmSetCover() {
+    if (!coverConfirm) return;
+    const url = coverConfirm;
+    setCoverConfirm(null);
+    try {
+      setR(await api.saveRecipe({ id, cover: url }));
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
   useEffect(() => { api.aiStatus().then(s => setCanIllust(!!s.imagegen?.available)).catch(() => {}); }, []);
 
   const missing = !r?.illust ? [] : [
@@ -210,7 +250,20 @@ export default function RecipePage({ id }: { id: string }) {
   return (
     <>
       <a className="back" onClick={e => { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = "#/"); }} href="#/">‹ 菜单</a>
-      <div className="hero">{r.cover && <img src={r.cover} alt={r.name} />}</div>
+      <input ref={coverInputRef} type="file" accept="image/*" hidden
+        onChange={e => { if (e.target.files?.[0]) pickNewCover(e.target.files[0]); e.target.value = ""; }} />
+      {r.cover ? (
+        <div className="hero">
+          <img src={r.cover} alt={r.name} />
+          <button className="herobtn" disabled={coverBusy} onClick={() => coverInputRef.current?.click()}>
+            {coverBusy ? "处理中…" : "换封面"}
+          </button>
+        </div>
+      ) : (
+        <button className="heroempty" disabled={coverBusy} onClick={() => coverInputRef.current?.click()}>
+          {coverBusy ? "处理中…" : "＋ 加封面"}
+        </button>
+      )}
       <h2 className="rtitle">{r.name}</h2>
       {relaxed && (
         <div className="relaxnote">
@@ -231,6 +284,26 @@ export default function RecipePage({ id }: { id: string }) {
           )}
           {r.kcal_source === "AI估算" && <span className="dimtext">　AI 估算，录克重后自动改为实算</span>}
         </div>
+      )}
+
+      {photos.length > 0 && (
+        <div className="photohist">
+          <div className="photohist-t">历史照片</div>
+          <div className="photohist-row">
+            {photos.map(m => (
+              <button className={`photohist-item ${m.photo_card === r.cover ? "on" : ""}`} key={m.id}
+                onClick={() => setCoverConfirm(m.photo_card)}>
+                <img src={m.photo_card} alt="" className="photohist-img" />
+                <span className="photohist-date">{m.date.slice(5).replace("-", "/")}</span>
+              </button>
+            ))}
+          </div>
+          <div className="dimtext">点一张设为封面</div>
+        </div>
+      )}
+      {coverConfirm && (
+        <ConfirmSheet title="换封面" content="把这张设为封面图？" confirmText="设为封面"
+          onConfirm={confirmSetCover} onCancel={() => setCoverConfirm(null)} />
       )}
 
       {hasTutorial ? (

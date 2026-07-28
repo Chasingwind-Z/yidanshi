@@ -1,5 +1,6 @@
 /* 菜谱详情 / 教程卡（册页界栏质感） */
 .hero {
+  position: relative;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--line-hair);
@@ -7,6 +8,70 @@
 .heroimg {
   width: 100%;
   display: block;
+}
+.herobtn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(26, 20, 16, 0.55);
+  color: #fdfaf3;
+  font-size: 12.5px;
+}
+.herobtn.disabled {
+  opacity: 0.6;
+}
+.heroempty {
+  border-radius: 16px;
+  border: 1px dashed var(--line-box);
+  padding: 28px 0;
+  text-align: center;
+  color: var(--dim);
+  font-size: 14px;
+}
+.heroempty.disabled {
+  opacity: 0.6;
+}
+
+/* 历史照片：每次记餐带的图本来就有日期，这里只是把它们从食历里拣出来看、顺手能设封面 */
+.photohist {
+  margin-top: 16px;
+}
+.photohist-t {
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.photohist-row {
+  white-space: nowrap;
+}
+.photohist-item {
+  display: inline-block;
+  width: 76px;
+  margin-right: 10px;
+  text-align: center;
+  vertical-align: top;
+}
+.photohist-item.on .photohist-img {
+  border-color: var(--accent);
+}
+.photohist-img {
+  width: 76px;
+  height: 76px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  display: block;
+}
+.photohist-date {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--dim);
+  font-family: var(--mono);
 }
 .rtitle {
   margin: 16px 0 4px;

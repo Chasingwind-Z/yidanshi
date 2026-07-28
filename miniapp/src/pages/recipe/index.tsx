@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
 import { Image, Input, ScrollView, Text, Textarea, View } from "@tarojs/components";
-import { api, absUrl, toastErr, type IngInfo, type Recipe } from "../../api";
+import { api, absUrl, toastErr, uploadCutout, type IngInfo, type Meal, type Recipe } from "../../api";
 import { extractAndApply } from "../../aiExtract";
 import { Loading, PosterSheet } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
@@ -184,12 +184,56 @@ export default function RecipePage() {
   // 插画教程卡：逐张生成（每张几十秒），与 web genAll 同构；canIllust 决定按钮是否露出
   const [canIllust, setCanIllust] = useState(false);
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
+  // 历史照片：每次记餐带的图本来就是「可选+带日期」的，缺的只是在菜谱页把它们拣出来看——
+  // 不新增字段，直接从 meals 里按 recipe_id 过滤（数据量个人规模，客户端筛没有性能问题）
+  const [photos, setPhotos] = useState<Meal[]>([]);
+  const [coverBusy, setCoverBusy] = useState(false);  // 「换封面」在传新照片，避免重复点
 
   useEffect(() => {
     api.recipe(id).then(setR).catch(() => setMissing404(true));
+    api.meals().then(ms => setPhotos(
+      ms.filter(m => m.recipe_id === id && m.photo_card !== "").sort((a, b) => b.date.localeCompare(a.date)),
+    )).catch(() => {});
     setPortion(1);
   }, [id]);
   useEffect(() => { api.aiStatus().then(s => setCanIllust(!!s.imagegen?.available)).catch(() => {}); }, []);
+
+  // 从历史照片里选一张设为封面：直接复用已经拍好的图，不用重新拍
+  async function setCoverFrom(url: string) {
+    if (!r || url === r.cover) return;
+    const { confirm } = await Taro.showModal({ title: "换封面", content: "把这张设为封面图？", confirmText: "设为封面" });
+    if (!confirm) return;
+    try {
+      setR(await api.saveRecipe({ id, cover: url }));
+    } catch (e) { toastErr(e); }
+  }
+
+  // 拍/选一张新照片直接当封面：走跟记餐一样的抠图，但用默认居中圆，不进精细取景层——
+  // 这只是换个封面图，没必要跟「记一餐」那套精确对准盘子的流程一样重
+  async function pickNewCover() {
+    if (coverBusy || !r) return;
+    let path: string | null = null;
+    try {
+      if (process.env.TARO_ENV === "weapp") {
+        const m = await Taro.chooseMedia({ count: 1, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["compressed"] });
+        path = m.tempFiles[0]?.tempFilePath ?? null;
+      } else {
+        const m = await Taro.chooseImage({ count: 1 });
+        path = m.tempFilePaths[0] ?? null;
+      }
+    } catch { return; }  // 用户取消
+    if (!path) return;
+    setCoverBusy(true);
+    try {
+      const cut = await uploadCutout(path, { mode: "auto", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
+      if (cut.results.length === 0) throw new Error("没有返回结果");
+      setR(await api.saveRecipe({ id, cover: cut.results[0].card }));
+    } catch (e) {
+      toastErr(e, "这张没抠好，换一张再试");
+    } finally {
+      setCoverBusy(false);
+    }
+  }
 
   function openManual(highlight?: string) {
     if (!r) return;
@@ -331,9 +375,16 @@ export default function RecipePage() {
   }
   return (
     <View className="page">
-      {r.cover !== "" && !imgErr.cover && (
+      {r.cover !== "" && !imgErr.cover ? (
         <View className="hero">
           <Image src={absUrl(r.cover)} mode="widthFix" className="heroimg" onError={() => failImg("cover")} />
+          <View className={`herobtn ${coverBusy ? "disabled" : ""}`} hoverClass="btn-hover"
+            onClick={() => { if (!coverBusy) pickNewCover(); }}>{coverBusy ? "处理中…" : "换封面"}</View>
+        </View>
+      ) : (
+        <View className={`heroempty ${coverBusy ? "disabled" : ""}`} hoverClass="btn-hover"
+          onClick={() => { if (!coverBusy) pickNewCover(); }}>
+          <Text>{coverBusy ? "处理中…" : "＋ 加封面"}</Text>
         </View>
       )}
       <View className="rtitle">{r.name}</View>
@@ -353,6 +404,22 @@ export default function RecipePage() {
             </Text>
           )}
           {r.kcal_source === "AI估算" && <Text className="dimtext">　AI 估算，录克重后自动改为实算</Text>}
+        </View>
+      )}
+
+      {photos.length > 0 && (
+        <View className="photohist">
+          <View className="photohist-t">历史照片</View>
+          <ScrollView scrollX className="photohist-row">
+            {photos.map(m => (
+              <View className={`photohist-item ${m.photo_card === r.cover ? "on" : ""}`} key={m.id}
+                hoverClass="btn-hover" onClick={() => setCoverFrom(m.photo_card)}>
+                <Image src={absUrl(m.photo_card)} mode="aspectFill" className="photohist-img" />
+                <Text className="photohist-date">{m.date.slice(5).replace("-", "/")}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <Text className="dimtext">点一张设为封面</Text>
         </View>
       )}
 
