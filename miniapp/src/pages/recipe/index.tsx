@@ -20,6 +20,13 @@ const EMOJI: [RegExp, string][] = [
 ];
 const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.slice(0, 1);
 
+/** 朱批提到哪个食材：取最长命中，避免"葱"命中"葱花"和"小葱"两行时选错 */
+function matchIngredient(note: string, names: string[]): string | null {
+  const hits = names.filter(n => n && note.includes(n));
+  if (hits.length === 0) return null;
+  return hits.reduce((a, b) => (b.length > a.length ? b : a));
+}
+
 /** 教程只写「一勺/半勺」这类模糊量时的粗估克重；少许/适量不猜 */
 function fuzzyGrams(amount?: string): number | null {
   if (!amount) return null;
@@ -34,6 +41,20 @@ function fuzzyGrams(amount?: string): number | null {
 /** 「少许/适量」这类天然不可量化的词：就算 AI 硬估了克重，也只当粗估看，不摆出精确数字 */
 function isVagueAmount(amount?: string): boolean {
   return !!amount && /少许|适量|些许|酌量|随意|适度|少量|一点|微量|若干/.test(amount);
+}
+
+/** 份量换算：把用量文案开头的数字按倍数放大（中文数字也认），仅用于展示，不改菜谱本身。
+ * 「少许/适量」这类本来就不是精确用量，认不出数字就原样返回——乘不出意义，不硬凑 */
+function scaleAmount(amount: string | undefined, factor: number): string {
+  if (!amount || factor === 1) return amount ?? "";
+  const CN: Record<string, number> = { 半: 0.5, 一: 1, 两: 2, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const m = amount.match(/^(\d+(?:\.\d+)?|[半一二两三四五六七八九十])(.*)$/);
+  if (!m) return amount;
+  const n = CN[m[1]] ?? parseFloat(m[1]);
+  if (!n) return amount;
+  const scaled = n * factor;
+  const num = Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(1).replace(/\.0$/, "");
+  return num + m[2];
 }
 
 interface SheetArgs { name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number }
@@ -137,6 +158,8 @@ export default function RecipePage() {
   const [r, setR] = useState<Recipe | null>(null);
   const [missing404, setMissing404] = useState(false);
   const [ingSheet, setIngSheet] = useState<SheetArgs | null>(null);
+  // 份量换算：纯展示倍数，不写回菜谱、不影响上面「整锅 kcal」的记录口径
+  const [portion, setPortion] = useState(1);
   const [posterUrl, setPosterUrl] = useState("");
   // 云端迁移后，illust / 封面 URL 可能指向不存在的 COS 对象（只有 demo 菜生成过插画）：
   // 记下哪些图 404，当作「没插画」处理，别显示裂图
@@ -154,18 +177,22 @@ export default function RecipePage() {
   const [mIngs, setMIngs] = useState<{ name: string; amount: string; grams: number | null; amount0: string }[]>([]);
   const [mSteps, setMSteps] = useState<string[]>([]);
   const [mSaving, setMSaving] = useState(false);
+  // 从朱批点进来时要定位到哪个食材（ScrollView scrollIntoView 找的就是这个行的 id）
+  const [hitIngName, setHitIngName] = useState("");
 
   useEffect(() => {
     api.recipe(id).then(setR).catch(() => setMissing404(true));
+    setPortion(1);
   }, [id]);
 
-  function openManual() {
+  function openManual(highlight?: string) {
     if (!r) return;
     // 预填已有食材（grams 跟着行走，存回不丢克重）；空表给三行起步
     const ings = r.ingredients.map(x => ({ name: x.name, amount: x.amount, grams: x.grams ?? null, amount0: x.amount }));
     while (ings.length < 3) ings.push({ name: "", amount: "", grams: null, amount0: "" });
     setMIngs(ings);
     setMSteps(r.steps.length > 0 ? [...r.steps] : ["", "", ""]);
+    setHitIngName(highlight ?? "");
     setFill("manual");
   }
 
@@ -325,20 +352,32 @@ export default function RecipePage() {
           <View className="tgrid">
             <View className="tcol tcol-ing">
               <View className="th4">食材准备</View>
+              {r.ingredients.length > 0 && (
+                <View className="portionbar">
+                  {[1, 2, 3].map(p => (
+                    <View key={p} className={`chip${portion === p ? " on" : ""}`} hoverClass="btn-hover"
+                      onClick={() => setPortion(p)}>{p}×</View>
+                  ))}
+                  {portion !== 1 && <Text className="dimtext">量按 {portion} 倍算，只是看看，不改菜谱</Text>}
+                </View>
+              )}
               {r.ingredients.map((ing, i) => {
                 // illust 存在且没 404 才当有插画：404 的走 emoji 兜底，也不把坏 URL 传进小百科
                 const ingIllust = r.illust?.ingredients[i] && !imgErr[`ing${i}`] ? r.illust.ingredients[i] : undefined;
+                const sAmount = scaleAmount(ing.amount, portion);
+                const sGrams = ing.grams != null ? Math.round(ing.grams * portion) : null;
+                const sKcal = r.nutrition?.per_item?.[i] != null ? Math.round(r.nutrition.per_item[i]! * portion) : undefined;
                 return (
                   <View className="ing" key={i} hoverClass="btn-hover" onClick={() =>
-                    setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: ingIllust,
-                      itemKcal: r.nutrition?.per_item?.[i] ?? undefined, grams: ing.grams ?? undefined })}>
+                    setIngSheet({ name: ing.name, amount: sAmount, iconUrl: ingIllust,
+                      itemKcal: sKcal, grams: sGrams ?? undefined })}>
                     <View className="icon">
                       {ingIllust
                         ? <Image src={absUrl(ingIllust)} mode="aspectFill" className="iconimg" onError={() => failImg(`ing${i}`)} />
                         : <Text>{icon(ing.name)}</Text>}
                     </View>
                     <View className="n">{ing.name}</View>
-                    {ing.amount !== "" && <View className="a">{ing.amount}</View>}
+                    {sAmount !== "" && <View className="a">{sAmount}</View>}
                   </View>
                 );
               })}
@@ -367,12 +406,18 @@ export default function RecipePage() {
           {(r.annotations?.length ?? 0) > 0 && (
             <View className="zhupi">
               <View className="zhupi-b">朱批</View>
-              {r.annotations!.map((a, i) => (
-                <View className="zhupi-p" key={i}>
-                  <Text className="zhupi-date">{a.date.slice(5).replace("-", "/")}</Text>
-                  {a.note}
-                </View>
-              ))}
+              {r.annotations!.map((a, i) => {
+                // 朱批提到食材名就能点：直接进编辑表单定位到那一行，省得自己去食材列表里翻
+                const hit = matchIngredient(a.note, r.ingredients.map(ing => ing.name));
+                return (
+                  <View className={`zhupi-p${hit ? " clickable" : ""}`} key={i}
+                    onClick={hit ? () => openManual(hit) : undefined}>
+                    <Text className="zhupi-date">{a.date.slice(5).replace("-", "/")}</Text>
+                    {a.note}
+                    {hit && <Text className="zhupi-hint"> → 改「{hit}」</Text>}
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
@@ -386,7 +431,7 @@ export default function RecipePage() {
           <View className="fill-acts">
             <View className="btn" hoverClass="btn-hover"
               onClick={() => { setAiErr(""); setFill("ai"); }}>贴教程链接/文案，AI 帮你录</View>
-            <View className="btn ghost" hoverClass="btn-hover" onClick={openManual}>手动补几笔</View>
+            <View className="btn ghost" hoverClass="btn-hover" onClick={() => openManual()}>手动补几笔</View>
           </View>
         </View>
       )}
@@ -406,7 +451,7 @@ export default function RecipePage() {
         {/* M1：有步骤的菜此前没有任何编辑入口（补录墙只在 steps===0 时出现）——
             补一个轻量「改一笔」，复用 openManual 并预填现有食材/步骤，别让用户从空表单重打一遍 */}
         {r.steps.length > 0 && (
-          <View className="btn ghost" hoverClass="btn-hover" onClick={openManual}>改一笔</View>
+          <View className="btn ghost" hoverClass="btn-hover" onClick={() => openManual()}>改一笔</View>
         )}
         <View className="btn ghost danger" hoverClass="btn-hover" onClick={delRecipe}>删除这道菜</View>
       </View>
@@ -440,10 +485,11 @@ export default function RecipePage() {
               <Text className="filltitle">{r.steps.length > 0 ? "改一笔" : "手动补几笔"}</Text>
               <View className="close" onClick={() => setFill("")}>✕</View>
             </View>
-            <ScrollView scrollY className="fillscroll">
+            <ScrollView scrollY className="fillscroll"
+              scrollIntoView={hitIngName ? `ingrow-${mIngs.findIndex(x => x.name === hitIngName)}` : undefined}>
               <View className="f">食材（名字 + 用量，空行不算）</View>
               {mIngs.map((x, i) => (
-                <View key={i} className="row fillrow">
+                <View key={i} id={`ingrow-${i}`} className={`row fillrow${x.name === hitIngName ? " hit" : ""}`}>
                   <View className="grow2">
                     <Input className="ipt" placeholderClass="ph" placeholder="食材，如：鸡蛋" value={x.name}
                       onInput={e => {

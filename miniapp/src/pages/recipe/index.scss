@@ -75,6 +75,19 @@
   letter-spacing: 2px;
   border-bottom: 1px solid var(--line-box);
 }
+/* 份量换算：纯展示倍数，不写回菜谱 */
+.portionbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+.portionbar .chip.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
 .ing {
   display: flex;
   flex-direction: column;
@@ -188,6 +201,13 @@
   font-family: var(--mono);
   font-size: 11px;
   margin-right: 6px;
+}
+.zhupi-p.clickable:active {
+  opacity: 0.7;
+}
+.zhupi-hint {
+  opacity: 0.6;
+  font-size: 12px;
 }
 
 .source {
@@ -377,6 +397,14 @@
 }
 .fillrow {
   margin-bottom: 8px;
+}
+.fillrow.hit {
+  border-radius: 8px;
+  animation: fillrow-hit 1.6s ease-out;
+}
+@keyframes fillrow-hit {
+  0%, 40% { background: rgba(176, 57, 43, 0.12); }
+  100% { background: transparent; }
 }
 .fillrow .grow2 {
   flex: 1.5;

@@ -11,6 +11,13 @@ const EMOJI: [RegExp, string][] = [
 ];
 const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.slice(0, 1);
 
+/** 朱批提到哪个食材：取最长命中，避免"葱"命中"葱花"和"小葱"两行时选错 */
+function matchIngredient(note: string, names: string[]): string | null {
+  const hits = names.filter(n => n && note.includes(n));
+  if (hits.length === 0) return null;
+  return hits.reduce((a, b) => (b.length > a.length ? b : a));
+}
+
 interface IngInfo {
   name: string; kcal_per_100g: number | null; protein_g: number | null;
   fat_g: number | null; carb_g: number | null; benefits: string[]; tips: string[]; source?: string;
@@ -31,6 +38,20 @@ function fuzzyGrams(amount?: string): number | null {
 /** 「少许/适量」这类天然不可量化的词：就算 AI 硬估了克重，也只当粗估看，不摆出精确数字 */
 function isVagueAmount(amount?: string): boolean {
   return !!amount && /少许|适量|些许|酌量|随意|适度|少量|一点|微量|若干/.test(amount);
+}
+
+/** 份量换算：把用量文案开头的数字按倍数放大（中文数字也认），仅用于展示，不改菜谱本身。
+ * 「少许/适量」这类本来就不是精确用量，认不出数字就原样返回——乘不出意义，不硬凑 */
+function scaleAmount(amount: string | undefined, factor: number): string {
+  if (!amount || factor === 1) return amount ?? "";
+  const CN: Record<string, number> = { 半: 0.5, 一: 1, 两: 2, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const m = amount.match(/^(\d+(?:\.\d+)?|[半一二两三四五六七八九十])(.*)$/);
+  if (!m) return amount;
+  const n = CN[m[1]] ?? parseFloat(m[1]);
+  if (!n) return amount;
+  const scaled = n * factor;
+  const num = Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(1).replace(/\.0$/, "");
+  return num + m[2];
 }
 
 /** 食材小百科：点食材弹出，AI 生成一次全食单缓存复用 */
@@ -118,6 +139,9 @@ export default function RecipePage({ id }: { id: string }) {
   const [r, setR] = useState<Recipe | null>(null);
   const [missing404, setMissing404] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [highlightIng, setHighlightIng] = useState<string | null>(null);
+  // 份量换算：纯展示倍数，不写回菜谱、不影响上面「整锅 kcal」的记录口径；离开页面自动复位
+  const [portion, setPortion] = useState(1);
   const [canIllust, setCanIllust] = useState(false);
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -144,7 +168,7 @@ export default function RecipePage({ id }: { id: string }) {
       setExporting(false);
     }
   }
-  useEffect(() => { api.recipe(id).then(setR).catch(() => setMissing404(true)); }, [id]);
+  useEffect(() => { api.recipe(id).then(setR).catch(() => setMissing404(true)); setPortion(1); }, [id]);
   useEffect(() => { api.aiStatus().then(s => setCanIllust(!!s.imagegen?.available)).catch(() => {}); }, []);
 
   const missing = !r?.illust ? [] : [
@@ -179,7 +203,8 @@ export default function RecipePage({ id }: { id: string }) {
     );
   }
   if (!r) return <div className="loading">加载中</div>;
-  if (editing) return <Editor r={r} onDone={nr => { setR(nr); setEditing(false); }} />;
+  if (editing) return <Editor r={r} highlightName={highlightIng}
+    onDone={nr => { setR(nr); setEditing(false); setHighlightIng(null); }} />;
 
   const hasTutorial = r.ingredients.length > 0 || r.steps.length > 0;
   return (
@@ -215,13 +240,24 @@ export default function RecipePage({ id }: { id: string }) {
           <div className="tgrid">
             <div className="tcol">
               <h4>食材准备</h4>
+              {r.ingredients.length > 0 && (
+                <div className="portionbar">
+                  {[1, 2, 3].map(p => (
+                    <button key={p} className={`chip${portion === p ? " on" : ""}`} onClick={() => setPortion(p)}>{p}×</button>
+                  ))}
+                  {portion !== 1 && <span className="dimtext">量按 {portion} 倍算，只是看看，不改菜谱</span>}
+                </div>
+              )}
               {r.ingredients.map((ing, i) => {
                 // illust 存在且没 404 才当有插画：404 的走 emoji 兜底，也不把坏 URL 传进小百科
                 const ingIllust = r.illust?.ingredients[i] && !iconErr[i] ? r.illust.ingredients[i] : undefined;
+                const sAmount = scaleAmount(ing.amount, portion);
+                const sGrams = ing.grams != null ? Math.round(ing.grams * portion) : null;
+                const sKcal = r.nutrition?.per_item?.[i] != null ? Math.round(r.nutrition.per_item[i]! * portion) : undefined;
                 return (
                   <button className="ing" key={i} onClick={() =>
-                    setIngSheet({ name: ing.name, amount: ing.amount, iconUrl: ingIllust,
-                      itemKcal: r.nutrition?.per_item?.[i] ?? undefined, grams: ing.grams ?? undefined })}>
+                    setIngSheet({ name: ing.name, amount: sAmount, iconUrl: ingIllust,
+                      itemKcal: sKcal, grams: sGrams ?? undefined })}>
                     <div className="icon">
                       {ingIllust
                         ? <img src={ingIllust} alt={ing.name} onError={() => failIcon(i)} />
@@ -230,7 +266,7 @@ export default function RecipePage({ id }: { id: string }) {
                     <div className="n">{ing.name}</div>
                     {/* 有人类可读用量就显示它；没有但录了克重（编辑器选库内食材时自动补的）就显示约估克重——
                         克重录了却什么都不显示，会让人以为量没记上（同 IngredientSheet 里的显示口径） */}
-                    {(ing.amount || ing.grams != null) && <div className="a">{ing.amount || `约${ing.grams}g`}</div>}
+                    {(sAmount || sGrams != null) && <div className="a">{sAmount || `约${sGrams}g`}</div>}
                   </button>
                 );
               })}
@@ -258,9 +294,16 @@ export default function RecipePage({ id }: { id: string }) {
           {(r.annotations?.length ?? 0) > 0 && (
             <div className="zhupi">
               <b>朱批</b>
-              {r.annotations!.map((a, i) => (
-                <p key={i}><span>{a.date.slice(5).replace("-", "/")}</span>{a.note}</p>
-              ))}
+              {r.annotations!.map((a, i) => {
+                // 朱批提到食材名就能点：直接跳进编辑器定位到那一行，省得自己去食材列表里翻
+                const hit = matchIngredient(a.note, r.ingredients.map(ing => ing.name));
+                return (
+                  <p key={i} className={hit ? "clickable" : undefined}
+                    onClick={hit ? () => { setHighlightIng(hit); setEditing(true); } : undefined}>
+                    <span>{a.date.slice(5).replace("-", "/")}</span>{a.note}{hit && <em> → 改「{hit}」</em>}
+                  </p>
+                );
+              })}
             </div>
           )}
           {canIllust && missing.length > 0 && (
@@ -296,7 +339,7 @@ export default function RecipePage({ id }: { id: string }) {
   );
 }
 
-export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }) {
+export function Editor({ r, onDone, highlightName }: { r: Recipe; onDone: (r: Recipe) => void; highlightName?: string | null }) {
   const [name, setName] = useState(r.name);
   const [category, setCategory] = useState(r.category);
   const [source, setSource] = useState(r.source);
@@ -305,6 +348,15 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
     : [{ name: "", amount: "", grams: "" }]);
   const [nameDb, setNameDb] = useState<{ names: string[]; defaults: Record<string, number> }>({ names: [], defaults: {} });
   useEffect(() => { api.ingredientNames().then(setNameDb).catch(() => {}); }, []);
+
+  // 从朱批点进来：定位到那一行食材，滚过去 + 轻扫一下高光，别让用户自己在长列表里找
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const hitIndex = highlightName ? rows.findIndex(x => x.name === highlightName) : -1;
+  useEffect(() => {
+    if (hitIndex < 0) return;
+    rowRefs.current[hitIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function setRow(i: number, patch: Partial<{ name: string; amount: string; grams: string }>) {
     setRows(rs => rs.map((x, j) => {
@@ -429,9 +481,10 @@ export function Editor({ r, onDone }: { r: Recipe; onDone: (r: Recipe) => void }
       </div>
       <label className="f">食材（名称可从营养库选，克重用于自动算营养）</label>
       {rows.map((row, i) => (
-        <div className="ingrow" key={i}>
+        <div className={`ingrow${i === hitIndex ? " hit" : ""}`} key={i} ref={el => { rowRefs.current[i] = el; }}>
           <input list="ingnames" placeholder="食材名" value={row.name} onChange={e => setRow(i, { name: e.target.value })} />
-          <input placeholder="用量" value={row.amount} onChange={e => setRow(i, { amount: e.target.value })} />
+          <input placeholder="用量" value={row.amount} onChange={e => setRow(i, { amount: e.target.value })}
+            autoFocus={i === hitIndex} />
           <input type="number" placeholder="克" value={row.grams} onChange={e => setRow(i, { grams: e.target.value })} />
           <button className="more" onClick={() => setRows(rs => rs.filter((_, j) => j !== i))} aria-label="删除">✕</button>
         </div>
