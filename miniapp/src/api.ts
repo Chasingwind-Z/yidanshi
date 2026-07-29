@@ -230,7 +230,12 @@ export function uploadCutout(
     formData.r = String(opts.circle.r);
   }
   if (!isWeapp) return uploadViaUploadFile(`${LOCAL_BASE}/api/cutout`, filePath, formData);
-  if (CLOUDRUN_HTTP_BASE) return uploadViaUploadFile(`${CLOUDRUN_HTTP_BASE}/api/cutout`, filePath, formData);
+  // 走 callContainer，不走 CLOUDRUN_HTTP_BASE 直连域名——真机实测炸出的坑：
+  // wx.uploadFile 直连公网域名是裸 HTTP 请求，微信不会往里注入 X-WX-OPENID
+  // （那个头只有走 callContainer 桥接才会自动加），配了 YIDANSHI_OWNER_OPENID 后
+  // 抠图这个写接口会被 owner_gate 当成陌生人拦下，报「需要主人令牌」。
+  // 纸上食单/教程卡这类只读晒图接口没这问题，是因为它们本来就走 ?t= 访客口令通道，
+  // 不依赖 openid；抠图是写操作，必须要主人身份，只能走 callContainer。
   return uploadViaCallContainer("/api/cutout", filePath, formData);
 }
 

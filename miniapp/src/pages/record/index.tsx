@@ -118,11 +118,13 @@ export default function Record() {
   function selectRecipe(id: string) {
     setRecipeId(id);
     setNewMode(false);
+    setNewMethod("");  // 换了道菜，上一道菜顺手贴的做法不能带过去
     closePicker();
   }
   function startNewDish() {
     setRecipeId("");
     setNewMode(true);
+    setNewMethod("");
     closePicker();
   }
 
@@ -240,7 +242,9 @@ export default function Record() {
       // （zzf 反馈：为什么不能顺便记做法，非要专门再去一趟）。整理失败不挡路，
       // 照旧走下面「去补做法」的桥——methodApplied 只用来决定还要不要问那句话。
       let methodApplied = false;
-      if (!recipeId && meal.recipe_id && newMethod.trim() !== "") {
+      // 新菜、或选了没做法的老菜时顺手贴的做法，都在这一步整理写回——不再限定「必须是新菜」
+      // （zzf 反馈：选已有但没做法的菜，记餐时同样应该能顺手补，别只照顾新菜那条路）
+      if (meal.recipe_id && newMethod.trim() !== "") {
         setSavingMethod(true);
         try {
           await extractAndApply(meal.recipe_id, newMethod.trim(), "");
@@ -490,6 +494,16 @@ export default function Record() {
             </>
           )}
         </View>
+      )}
+      {/* 选中的是已有但还没做法的菜：顺手贴一下，跟新菜那条路一样在保存时一起整理——
+          放在 dishpick 外面（那个 View 整块点击都会重新打开选菜器，textarea 得单独放） */}
+      {!newMode && curRecipe && curRecipe.steps.length === 0 && (
+        <>
+          <View className="f">这道菜还没做法，顺手贴一下？（可选，AI 帮你整理；不写也行，之后随时能补）</View>
+          <Textarea className="ta" placeholderClass="ph" value={newMethod} maxlength={-1}
+            onInput={e => setNewMethod(e.detail.value)}
+            placeholder="粘贴抖音/小红书/B站/下厨房链接，或整段文字教程" />
+        </>
       )}
 
       <View className="f">日期</View>
