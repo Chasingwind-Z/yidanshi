@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import cutout, imagegen, llm, nutrition, photostore, segfood, storage, suggest
+from . import cutout, imagegen, llm, nutrition, photostore, segfood, social_extract, storage, suggest
 
 app = FastAPI(title="一箪食 yidanshi")
 storage.init_dirs()
@@ -536,7 +536,7 @@ def replate(body: dict):
 
 @app.get("/api/ai/status")
 def ai_status():
-    return {**llm.backend_status(), "imagegen": imagegen.backend_status()}
+    return {**llm.backend_status(), "imagegen": imagegen.backend_status(), "video": llm.video_status()}
 
 
 @app.post("/api/ai/illustrate")
@@ -557,20 +557,53 @@ def ai_illustrate(body: dict):
 
 @app.post("/api/ai/extract")
 def ai_extract(body: dict):
-    """text=教程原文；或 url=分享链接（抖音等，服务端尽力抓文案再整理）。"""
+    """text=教程原文；或 url=分享链接（抖音/小红书/B站按各自最靠谱的方式抓，其余平台
+    走通用兜底）。响应里 video_can_retry 标记这条链接是否解出了视频直链——前端据此
+    决定要不要在结果不理想时露出「看视频再试一次」这个可选、真花钱的按钮。"""
     text, source = body.get("text", "").strip(), body.get("source", "")
+    video_can_retry = False
     if body.get("url"):
         source = body["url"]
-        fetched = llm.fetch_link_text(body["url"])
-        if len(fetched) < 15:
+        fetched = social_extract.fetch(body["url"])
+        video_can_retry = bool(fetched["video_url"]) and llm.video_status()["available"]
+        # 抓到的文案不够长——三个支持的平台都至少有标题字段，实际上极少真正抓到空文案；
+        # 只要有视频兜底就不当真失败（诚实报错留给「连视频都没有」的情况）
+        if len(fetched["text"]) < 15 and not video_can_retry:
             raise HTTPException(422, "这个链接抓不到文案（平台反爬）——去 App 里长按复制它的文案粘过来吧")
-        text = (fetched + "\n" + text).strip()
+        text = (fetched["text"] + "\n" + text).strip()
     if not text:
         raise HTTPException(400, "教程原文不能为空")
     try:
-        return llm.extract_recipe(text, source)
+        result = llm.extract_recipe(text, source)
     except Exception as e:  # CLI 超时 / API 配置错 / JSON 解析失败等，前端直接展示
         raise HTTPException(502, str(e))
+    return {**result, "video_can_retry": video_can_retry}
+
+
+@app.post("/api/ai/extract-video")
+def ai_extract_video(body: dict):
+    """看视频出菜谱——真花钱的一步，前端只应该在用户主动点了「看视频再试一次」时才调。
+    重试一次，且每次都重新解析视频地址（不是拿同一个地址重打）：这类请求处理慢
+    （模型要看完视频），实测视频直链是签名+限时的，处理期间旧地址可能已经过期，
+    复用同一个地址重试大概率还是失败——必须配一次新解析才是真的重试。"""
+    url = str(body.get("url", "")).strip()
+    if not url:
+        raise HTTPException(400, "缺少视频链接")
+    last_err: Exception | None = None
+    video_ever_resolved = False
+    for _attempt in range(2):
+        fetched = social_extract.fetch(url)
+        if not fetched["video_url"]:
+            continue
+        video_ever_resolved = True
+        try:
+            result = llm.understand_video(fetched["video_url"], source=url)
+            return {**result, "video_can_retry": False}  # 已经是视频兜底了，不再往下递归
+        except Exception as e:
+            last_err = e
+    if not video_ever_resolved:
+        raise HTTPException(422, "这条链接解不出可播放的视频地址（平台不支持，或链接已过期）")
+    raise HTTPException(502, str(last_err) if last_err else "看视频这步失败了")
 
 
 # ---------- 记一餐 ----------

@@ -1,6 +1,6 @@
 import { toPng } from "html-to-image";
 import { useEffect, useRef, useState } from "react";
-import { api, type Meal, type Recipe } from "../api";
+import { api, type Ingredient, type Meal, type Recipe } from "../api";
 import ConfirmSheet from "../confirm";
 
 const EMOJI: [RegExp, string][] = [
@@ -463,28 +463,55 @@ export function Editor({ r, onDone, highlightName }: { r: Recipe; onDone: (r: Re
   const [aiBusy, setAiBusy] = useState(false);
   const [ai, setAi] = useState<{ backend: string; available: boolean } | null>(null);
   useEffect(() => { api.aiStatus().then(setAi).catch(() => setAi(null)); }, []);
+  // 文案整理不够（⚠️ 开头的诚实警示）时才露出「看视频再试一次」——真花钱、真慢，
+  // 不能是默认路径。videoLink 记住上一次整理用的链接，供这个可选按钮复用。
+  const [videoLink, setVideoLink] = useState<string | null>(null);
+  const [videoCanRetry, setVideoCanRetry] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
+
+  function applyExtracted(x: { name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null }) {
+    if (x.name) setName(x.name);
+    if (x.category) setCategory(x.category);
+    setRows(x.ingredients.map(i => ({ name: i.name, amount: i.amount ?? "", grams: i.grams != null ? String(i.grams) : "" })));
+    setSteps(x.steps.join("\n"));
+    setTips(x.tips.join("\n"));
+    if (x.kcal != null) setKcal(String(x.kcal));
+    if (x.difficulty) setDifficulty(x.difficulty);
+    if (x.minutes != null) setMinutes(String(x.minutes));
+  }
 
   async function aiFill() {
     setErr("");
     setAiBusy(true);
+    setVideoCanRetry(false);
     try {
       // 粘的是分享链接（抖音口令等）→ 服务端抓文案；纯文字 → 直接整理
       const link = aiText.match(/https?:\/\/\S+/)?.[0];
       const isLinkMode = !!link && aiText.replace(/https?:\/\/\S+/, "").trim().length < 80;
       const x = await api.aiExtract(isLinkMode ? "" : aiText, source, isLinkMode ? link : undefined);
-      if (x.name) setName(x.name);
-      if (x.category) setCategory(x.category);
-      setRows(x.ingredients.map(i => ({ name: i.name, amount: i.amount ?? "", grams: i.grams != null ? String(i.grams) : "" })));
-      setSteps(x.steps.join("\n"));
-      setTips(x.tips.join("\n"));
-      if (x.kcal != null) setKcal(String(x.kcal));
-      if ((x as { difficulty?: string }).difficulty) setDifficulty((x as { difficulty?: string }).difficulty!);
-      if (x.minutes != null) setMinutes(String(x.minutes));
+      applyExtracted(x);
+      setVideoLink(isLinkMode ? link! : null);
+      setVideoCanRetry(x.video_can_retry);
       setAiText("");
     } catch (e) {
       setErr(`AI 整理失败：${(e as Error).message}`);
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  async function aiFillFromVideo() {
+    if (!videoLink || videoBusy) return;
+    setErr("");
+    setVideoBusy(true);
+    try {
+      const x = await api.aiExtractVideo(videoLink);
+      applyExtracted(x);
+      setVideoCanRetry(false);
+    } catch (e) {
+      setErr(`看视频这步失败了：${(e as Error).message}`);
+    } finally {
+      setVideoBusy(false);
     }
   }
 
@@ -521,7 +548,7 @@ export function Editor({ r, onDone, highlightName }: { r: Recipe; onDone: (r: Re
 
       {ai?.available && (
         <div className="aibox">
-          <div className="t">粘教程文案、抖音分享链接（口令直接粘），或随口描述做法——AI 帮你整理成菜谱</div>
+          <div className="t">粘教程文案、分享链接（抖音/小红书/B站，口令直接粘），或随口描述做法——AI 帮你整理成菜谱</div>
           <textarea value={aiText} onChange={e => setAiText(e.target.value)}
             placeholder={"例：先把牛排切条腌10分钟，芦笋焯水40秒…\n或直接粘：7.88 复制打开抖音 https://v.douyin.com/xxxx/"} />
           <div style={{ marginTop: 8 }}>
@@ -529,6 +556,13 @@ export function Editor({ r, onDone, highlightName }: { r: Recipe; onDone: (r: Re
               {aiBusy ? "AI 整理中，可能要十几秒…" : `AI 整理（${ai.backend}）`}
             </button>
           </div>
+          {videoCanRetry && (
+            <div style={{ marginTop: 8 }}>
+              <button className="btn ghost" disabled={videoBusy} onClick={aiFillFromVideo}>
+                {videoBusy ? "AI 在看视频，十几秒…" : "文案没写做法？看视频再试一次（要花一点点钱）"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

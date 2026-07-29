@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
 import { Image, Input, ScrollView, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, uploadCutout, type IngInfo, type Meal, type Recipe } from "../../api";
-import { extractAndApply } from "../../aiExtract";
+import { extractAndApply, extractFromVideoAndApply } from "../../aiExtract";
 import { Loading, PosterSheet } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
@@ -251,10 +251,31 @@ export default function RecipePage() {
     if (!raw || aiBusy || !r) return;
     setAiErr("");
     setAiBusy(true);
+    const source = r.source;
     try {
-      setR(await extractAndApply(id, raw, r.source));
+      const result = await extractAndApply(id, raw, source);
+      setR(result.recipe);
       setFill("");
       setAiText("");
+      // 文案没写具体做法（⚠️ 诚实警示）时才问要不要看视频——真花钱、真慢，不是默认路径
+      if (result.videoCanRetry && result.link) {
+        const link = result.link;
+        const { confirm } = await Taro.showModal({
+          title: "文案没写具体做法",
+          content: "要不要看视频再核对一次做法？要花一点点钱，十几秒就好。",
+          confirmText: "看视频", cancelText: "就这样",
+        });
+        if (confirm) {
+          Taro.showLoading({ title: "AI 在看视频…", mask: true });
+          try {
+            setR(await extractFromVideoAndApply(id, link, source));
+          } catch (e) {
+            Taro.showToast({ title: `看视频失败：${(e as Error).message}`, icon: "none" });
+          } finally {
+            Taro.hideLoading();
+          }
+        }
+      }
     } catch (e) {
       // 分不清是通道没配还是这次没成：问一下 ai/status——没配好就别让人干等，转手动
       const st = await api.aiStatus().catch(() => null);
@@ -557,7 +578,7 @@ export default function RecipePage() {
             </View>
             <Textarea className="ta filltext" placeholderClass="ph" value={aiText} maxlength={-1}
               disabled={aiBusy} onInput={e => setAiText(e.detail.value)}
-              placeholder="粘贴抖音/下厨房链接，或整段文字教程" />
+              placeholder="粘贴抖音/小红书/B站/下厨房链接，或整段文字教程" />
             {aiErr !== "" && <View className="err">{aiErr}</View>}
             <View className={`btn fillgo ${aiBusy || aiText.trim() === "" ? "disabled" : ""}`}
               hoverClass="btn-hover" onClick={aiGo}>

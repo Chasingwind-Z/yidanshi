@@ -50,6 +50,7 @@ export interface CutoutResult { mode: string; photo_id: string; card: string }
 export interface AiStatus {
   backend: string; model: string; available: boolean;
   imagegen?: { backend: string; model: string; available: boolean };
+  video?: { backend: string; model: string; available: boolean };
 }
 export interface ConfigPayload {
   llm: Record<string, unknown>; imagegen: Record<string, unknown>; goal: { kcal?: number | string };
@@ -282,8 +283,12 @@ export const api = {
   aiStatus: () => request<AiStatus>("/api/ai/status"),
   /** 贴教程文案/链接 → LLM 整理成结构化菜谱（参数形状与 web/src/api.ts 一致） */
   aiExtract: (text: string, source: string, url?: string) =>
-    request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string }>(
+    request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string; video_can_retry: boolean }>(
       "/api/ai/extract", "POST", { text, source, url }),
+  /** 看视频出菜谱：真花钱、真慢（约一两分钟），只应该在用户主动点了「看视频再试一次」时调 */
+  aiExtractVideo: (url: string) =>
+    request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string; video_can_retry: boolean }>(
+      "/api/ai/extract-video", "POST", { url }),
   /** 逐张生成插画（食材图标/步骤图），前端按张循环调用以显示进度，与 web/src/api.ts 一致 */
   aiIllustrate: (recipe_id: string, kind: "ing" | "step", index: number) =>
     request<{ url: string }>("/api/ai/illustrate", "POST", { recipe_id, kind, index }),

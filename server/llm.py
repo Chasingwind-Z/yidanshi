@@ -187,20 +187,9 @@ def _run_openai(cfg: dict, prompt: str, timeout: int = 120, json_mode: bool = Fa
         return json.loads(resp.read())["choices"][0]["message"]["content"]
 
 
-def extract_recipe(text: str, source: str = "") -> dict:
-    status = backend_status()
-    if not status["available"]:
-        raise RuntimeError("没有可用的 AI 通道：装 claude/codex CLI，或在 data/config.json 配置 openai 兼容 API")
-
-    prompt = PROMPT.format(text=text.strip()[:6000])
-    backend = status["backend"]
-    if backend == "claude-cli":
-        out = _run_cli(["claude", "-p"], prompt)
-    elif backend == "codex-cli":
-        out = _run_cli(["codex", "exec"], prompt)
-    else:
-        out = _run_openai(_effective_config(), prompt, json_mode=True)
-
+def _parse_recipe_json(out: str, source: str) -> dict:
+    """把模型输出的原始文本抠出 JSON、清洗成统一菜谱形状——extract_recipe 和
+    understand_video 共用，两条路径产出的数据形状必须一模一样，前端才不用分叉处理。"""
     m = re.search(r"\{.*\}", out, re.S)
     if not m:
         raise RuntimeError(f"AI 输出里没有 JSON：{out[:200]}")
@@ -220,3 +209,74 @@ def extract_recipe(text: str, source: str = "") -> dict:
         "kcal": int(kcal) if isinstance(kcal, (int, float)) else None,
         "source": source,
     }
+
+
+def extract_recipe(text: str, source: str = "") -> dict:
+    status = backend_status()
+    if not status["available"]:
+        raise RuntimeError("没有可用的 AI 通道：装 claude/codex CLI，或在 data/config.json 配置 openai 兼容 API")
+
+    prompt = PROMPT.format(text=text.strip()[:6000])
+    backend = status["backend"]
+    if backend == "claude-cli":
+        out = _run_cli(["claude", "-p"], prompt)
+    elif backend == "codex-cli":
+        out = _run_cli(["codex", "exec"], prompt)
+    else:
+        out = _run_openai(_effective_config(), prompt, json_mode=True)
+    return _parse_recipe_json(out, source)
+
+
+# 视频理解：固定走火山方舟 doubao 的视频输入能力（claude/codex CLI 不吃视频，DeepSeek 纯文本）。
+# 复用已经在用的 ARK_API_KEY（插画生成同一把 key，账号级开通，不需要单独申请）。
+_VIDEO_BACKEND = {"base_url": "https://ark.cn-beijing.volces.com/api/v3",
+                  "api_key_env": "ARK_API_KEY", "model": "doubao-seed-2-1-pro-260628"}
+
+VIDEO_PROMPT = """看这段视频，整理成结构化菜谱。这是视频理解，不是文案整理——请仔细看画面里的
+实际操作、听语音里说的步骤、认画面上出现的文字（很多博主把关键步骤打成字幕贴在画面上而不
+是说出来）。规则：
+- 只写视频里真的看到/听到的内容，不要用你自己对这道菜的通用知识去补全没出现过的步骤
+- 如果视频里的操作/文字实在看不清、判断不准，宁可 tips 里如实说清楚看不清的地方，也不要装作看清了
+- 食材**主料和调料都要列全**；用量视频里有就用视频里的，没有就按常见做法估一个；每个食材再估一个 grams
+- 步骤合并成3-6步，每步一句话说清楚动作和火候/时长
+- kcal：按食材用量估算单人份总热量（整数千卡），无法估算给 null
+- minutes：预估从备菜到出锅的总耗时（整数分钟），无法估算给 null
+- difficulty：从 简单/中等/硬菜 三档选一个
+- servings：这份食材量正常吃是几餐
+只输出一个 JSON 对象，不要任何其他文字：
+{"name": "菜名", "category": "从 饭粥/面点/羹汤/小炒/甜点 中选一个",
+  "ingredients": [{"name": "食材名", "amount": "用量", "grams": 55}],
+  "steps": ["..."],
+  "tips": ["没有就给空数组"],
+  "kcal": 472, "minutes": 25, "difficulty": "简单", "servings": 1}"""
+
+
+def video_status() -> dict:
+    ok = bool(os.environ.get(_VIDEO_BACKEND["api_key_env"]))
+    return {"backend": "openai-video", "model": _VIDEO_BACKEND["model"], "available": ok}
+
+
+def understand_video(video_url: str, source: str = "") -> dict:
+    """看视频出菜谱：真花钱的一步，调用方应该只在用户主动点了「看视频再试一次」时才调。
+    单次调用——要不要重试、要不要重新解析视频地址是调用方的事（见 app.py 的
+    ai_extract_video：视频直链是签名+限时的，处理慢的请求里旧地址可能中途过期，
+    重试必须配一次新解析，而不是拿同一个地址重打，所以重试逻辑不放在这一层）。"""
+    if not video_status()["available"]:
+        raise RuntimeError(f"没配 {_VIDEO_BACKEND['api_key_env']}，看不了视频")
+    body = {
+        "model": _VIDEO_BACKEND["model"],
+        "thinking": {"type": "disabled"},  # 关键：默认的深度思考模式实测耗时飘到 3-4 分钟且会中途断连，
+        # 关掉后稳定在十秒量级、结果没差——这个模型的深度思考对这个任务是负收益，不是可选的性能微调
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": VIDEO_PROMPT},
+            {"type": "video_url", "video_url": {"url": video_url}},
+        ]}],
+    }
+    key = os.environ[_VIDEO_BACKEND["api_key_env"]]
+    req = urllib.request.Request(
+        _VIDEO_BACKEND["base_url"].rstrip("/") + "/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=180) as resp:  # 视频理解比文本慢得多，给够时间
+        out = json.loads(resp.read())["choices"][0]["message"]["content"]
+    return _parse_recipe_json(out, source)

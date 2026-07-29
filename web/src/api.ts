@@ -130,6 +130,7 @@ export const api = {
   aiStatus: () => j<{
     backend: string; model: string; available: boolean;
     imagegen?: { backend: string; model: string; available: boolean };
+    video?: { backend: string; model: string; available: boolean };
   }>(fetch("/api/ai/status")),
   aiIllustrate: (recipe_id: string, kind: "ing" | "step", index: number) =>
     j<{ url: string }>(fetch("/api/ai/illustrate", {
@@ -137,9 +138,16 @@ export const api = {
       body: JSON.stringify({ recipe_id, kind, index }),
     })),
   aiExtract: (text: string, source: string, url?: string) =>
-    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; source: string }>(
+    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; source: string; video_can_retry: boolean }>(
       fetch("/api/ai/extract", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, source, url }),
+      })),
+  // 看视频出菜谱：真花钱、真慢（一两分钟），只应该在用户主动点了「看视频再试一次」时调
+  aiExtractVideo: (url: string) =>
+    j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; source: string; video_can_retry: boolean }>(
+      fetch("/api/ai/extract-video", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
       })),
 };

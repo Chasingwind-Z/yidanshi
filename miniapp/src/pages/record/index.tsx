@@ -463,7 +463,7 @@ export default function Record() {
           <View className="f">做法（可选，贴教程链接/文案，AI 帮你整理；不写也行，之后随时能补）</View>
           <Textarea className="ta" placeholderClass="ph" value={newMethod} maxlength={-1}
             onInput={e => setNewMethod(e.detail.value)}
-            placeholder="粘贴抖音/下厨房链接，或整段文字教程" />
+            placeholder="粘贴抖音/小红书/B站/下厨房链接，或整段文字教程" />
         </View>
       ) : (
         <View className="dishpick" hoverClass="btn-hover" onClick={openPicker}>
