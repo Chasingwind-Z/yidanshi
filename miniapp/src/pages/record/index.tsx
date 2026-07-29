@@ -50,6 +50,12 @@ export default function Record() {
   const [fScale, setFScale] = useState(1);
   const [fX, setFX] = useState(0);
   const [fY, setFY] = useState(0);
+  // movable-view 的 x/y/scale-value 是「受控」属性——之前直接绑 fX/fY/fScale，
+  // 每次拖动/缩放事件都把 state 灌回同一个 prop，微信文档写明"改变这几个值会触发动画"，
+  // 于是原生手势每走一帧就叠加一次多余的"跳转动画"，跟手势本身打架，抖得很明显（真机实测反馈）。
+  // 修法：prop 只给「这张照片刚打开时」的初始值，从此不再改它；fX/fY/fScale 继续被
+  // onChange/onScale 实时更新，但只用来算圆心坐标，不再回灌 prop——手势期间彻底交给原生。
+  const [fInit, setFInit] = useState({ x: 0, y: 0 });
 
   const [recipeId, setRecipeId] = useState("");
   const [newName, setNewName] = useState("");
@@ -157,6 +163,7 @@ export default function Record() {
       setFBase({ w: bw, h: bh });
       setFX(x);
       setFY(y);
+      setFInit({ x, y });  // 只在这里设一次，movable-view 的 x/y prop 往后不会再变
     } catch {
       setFImgSize(null);
       setFBase(null);
@@ -385,7 +392,7 @@ export default function Record() {
         {fBase ? (
           <MovableArea className="framearea">
             <MovableView className="framemove" direction="all" scale scaleMin={1} scaleMax={4}
-              x={fX} y={fY} scaleValue={fScale}
+              x={fInit.x} y={fInit.y} scaleValue={1}
               style={{ width: `${fBase.w}px`, height: `${fBase.h}px` }}
               onChange={e => { setFX(e.detail.x); setFY(e.detail.y); }}
               onScale={e => { setFScale(e.detail.scale); setFX(e.detail.x); setFY(e.detail.y); }}>

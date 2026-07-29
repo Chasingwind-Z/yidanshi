@@ -215,7 +215,7 @@ async function uploadViaCallContainer(path: string, filePath: string, formData: 
  * 拍照/选图后上传 /api/cutout。云端没有 rembg，返回圆框直裁或 SegmentFood
  * 抠图结果（单结果，无需双选）。
  */
-export function uploadCutout(
+export async function uploadCutout(
   filePath: string,
   opts: { alreadyCut?: boolean; mode?: string; circle?: { cx: number; cy: number; r: number } } = {},
 ) {
@@ -236,7 +236,14 @@ export function uploadCutout(
   // 抠图这个写接口会被 owner_gate 当成陌生人拦下，报「需要主人令牌」。
   // 纸上食单/教程卡这类只读晒图接口没这问题，是因为它们本来就走 ?t= 访客口令通道，
   // 不依赖 openid；抠图是写操作，必须要主人身份，只能走 callContainer。
-  return uploadViaCallContainer("/api/cutout", filePath, formData);
+  // 但 callContainer 的 data 体积上限约 1MB——手机原图哪怕选了"压缩"档还是能到几 MB，
+  // 真机实测直接报 -606001（包体超限）。上传前先用微信自带的压缩接口把长边收到 1600px：
+  // cutout.py 最终卡片只有 1024px，收到 1600px 完全不损失可用精度，换来稳定能传。
+  let uploadPath = filePath;
+  try {
+    uploadPath = (await Taro.compressImage({ src: filePath, compressedWidth: 1600, quality: 82 })).tempFilePath;
+  } catch { /* 压缩失败（罕见）就传原图，callContainer 兜不住的话用户会看到明确的上传失败提示 */ }
+  return uploadViaCallContainer("/api/cutout", uploadPath, formData);
 }
 
 // ---------- 接口（与 web/src/api.ts 对应） ----------
