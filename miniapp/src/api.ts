@@ -211,6 +211,28 @@ async function uploadViaCallContainer(path: string, filePath: string, formData: 
   return parsed as { results: CutoutResult[] };
 }
 
+// callContainer 的 data 体积上限约 1MB（微信侧限制，非本项目可调）；留足余量避开边界
+const MAX_UPLOAD_BYTES = 700 * 1024;
+
+/** 压完实测字节数，不够小就用更狠的参数重压——不赌固定参数（真机实测赌错过一次）。
+ * 三档都还超标（极罕见）就用最狠那档的结果，好过原图直接超限。 */
+async function shrinkForUpload(filePath: string): Promise<string> {
+  const attempts = [
+    { compressedWidth: 1600, quality: 80 },
+    { compressedWidth: 1200, quality: 65 },
+    { compressedWidth: 900, quality: 50 },
+  ];
+  let best = filePath;
+  for (const opt of attempts) {
+    try {
+      best = (await Taro.compressImage({ src: filePath, ...opt })).tempFilePath;
+      const info = await Taro.getFileInfo({ filePath: best });
+      if ("size" in info && info.size <= MAX_UPLOAD_BYTES) return best;
+    } catch { /* 这一档失败（罕见）就试更狠的一档，best 保留上一档成功的结果 */ }
+  }
+  return best;
+}
+
 /**
  * 拍照/选图后上传 /api/cutout。云端没有 rembg，返回圆框直裁或 SegmentFood
  * 抠图结果（单结果，无需双选）。
@@ -237,13 +259,11 @@ export async function uploadCutout(
   // 纸上食单/教程卡这类只读晒图接口没这问题，是因为它们本来就走 ?t= 访客口令通道，
   // 不依赖 openid；抠图是写操作，必须要主人身份，只能走 callContainer。
   // 但 callContainer 的 data 体积上限约 1MB——手机原图哪怕选了"压缩"档还是能到几 MB，
-  // 真机实测直接报 -606001（包体超限）。上传前先用微信自带的压缩接口把长边收到 1600px：
-  // cutout.py 最终卡片只有 1024px，收到 1600px 完全不损失可用精度，换来稳定能传。
-  let uploadPath = filePath;
-  try {
-    uploadPath = (await Taro.compressImage({ src: filePath, compressedWidth: 1600, quality: 82 })).tempFilePath;
-  } catch { /* 压缩失败（罕见）就传原图，callContainer 兜不住的话用户会看到明确的上传失败提示 */ }
-  return uploadViaCallContainer("/api/cutout", uploadPath, formData);
+  // 真机实测直接报 -606001（包体超限）。第一版压到 1600px/quality82 固定参数仍不够
+  // （真机实测同样炸 -606001，说明是赌参数不可靠）——改成压完实测字节数，不够小就用
+  // 更狠的参数重压，而不是赌一组固定数字。cutout.py 最终卡片只有 1024px，
+  // 压到 900px 都还绰绰有余，不影响可用精度。
+  return uploadViaCallContainer("/api/cutout", await shrinkForUpload(filePath), formData);
 }
 
 // ---------- 接口（与 web/src/api.ts 对应） ----------
