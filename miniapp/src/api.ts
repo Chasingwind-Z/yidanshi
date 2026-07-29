@@ -147,20 +147,6 @@ function qs(params: Record<string, string | number | undefined>): string {
 
 // ---------- 照片上传（multipart） ----------
 
-/** 手工 UTF-8 编码：小程序环境不保证有 TextEncoder */
-function utf8Bytes(s: string): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < s.length; i++) {
-    let c = s.codePointAt(i)!;
-    if (c > 0xffff) i++;
-    if (c < 0x80) out.push(c);
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-  }
-  return out;
-}
-
 function parseUploadBody(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
   try { return JSON.parse(raw); } catch { return {}; }
@@ -175,67 +161,22 @@ async function uploadViaUploadFile(url: string, filePath: string, formData: Reco
   return body as { results: CutoutResult[] };
 }
 
-/** 免域名配置的兜底：读文件字节，手工拼 multipart，走 callContainer */
-async function uploadViaCallContainer(path: string, filePath: string, formData: Record<string, string>) {
-  ensureCloud();
-  const fileBuf = Taro.getFileSystemManager().readFileSync(filePath) as ArrayBuffer;
-  const boundary = `----yidanshi${Date.now().toString(16)}`;
-  let head = "";
-  for (const [k, v] of Object.entries(formData)) {
-    head += `--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`;
-  }
-  head += `--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`;
-  const tail = `\r\n--${boundary}--\r\n`;
-  const hb = utf8Bytes(head);
-  const tb = utf8Bytes(tail);
-  const file = new Uint8Array(fileBuf);
-  const body = new Uint8Array(hb.length + file.length + tb.length);
-  body.set(hb, 0);
-  body.set(file, hb.length);
-  body.set(tb, hb.length + file.length);
-
-  const call = (Taro.cloud as unknown as {
-    callContainer: (opt: object) => Promise<ContainerResp>;
-  }).callContainer;
-  const res = await call({
-    config: { env: CLOUD_ENV },
-    path,
-    method: "POST",
-    data: body.buffer,
-    header: { "X-WX-SERVICE": SERVICE, "content-type": `multipart/form-data; boundary=${boundary}` },
-  });
-  const parsed = parseUploadBody(res.data);
-  if (res.statusCode < 200 || res.statusCode >= 300) {
-    throw new Error(detailMsg(parsed) || `上传失败（${res.statusCode}）`);
-  }
-  return parsed as { results: CutoutResult[] };
-}
-
-// callContainer 的 data 体积上限约 1MB（微信侧限制，非本项目可调）；留足余量避开边界
-const MAX_UPLOAD_BYTES = 700 * 1024;
-
-/** 压完实测字节数，不够小就用更狠的参数重压——不赌固定参数（真机实测赌错过一次）。
- * 三档都还超标（极罕见）就用最狠那档的结果，好过原图直接超限。 */
-async function shrinkForUpload(filePath: string): Promise<string> {
-  const attempts = [
-    { compressedWidth: 1600, quality: 80 },
-    { compressedWidth: 1200, quality: 65 },
-    { compressedWidth: 900, quality: 50 },
-  ];
-  let best = filePath;
-  for (const opt of attempts) {
-    try {
-      best = (await Taro.compressImage({ src: filePath, ...opt })).tempFilePath;
-      const info = await Taro.getFileInfo({ filePath: best });
-      if ("size" in info && info.size <= MAX_UPLOAD_BYTES) return best;
-    } catch { /* 这一档失败（罕见）就试更狠的一档，best 保留上一档成功的结果 */ }
-  }
-  return best;
-}
-
 /**
  * 拍照/选图后上传 /api/cutout。云端没有 rembg，返回圆框直裁或 SegmentFood
  * 抠图结果（单结果，无需双选）。
+ *
+ * 鉴权/大文件传输的坑，踩了三轮才找对方向，记录清楚别再回头踩：
+ * ① wx.uploadFile 直连 CLOUDRUN_HTTP_BASE 域名——裸 HTTP 请求，微信不会往里注入
+ *    X-WX-OPENID（那个头只有走 callContainer 桥接才会自动加），配了
+ *    YIDANSHI_OWNER_OPENID 后被 owner_gate 当陌生人拦下，报「需要主人令牌」。
+ * ② 换成 callContainer 手工拼 multipart——身份是有了，但官方文档写明 callContainer
+ *    「文本请求限 100KiB」；真机实测哪怕把照片压到几十 KB 依然报 -606001，说明卡住的
+ *    根本不是体积，是这条通道官方就不建议用来传文件（"callContainer 有请求大小
+ *    限制，不建议用于文件上传"）。
+ * ③ 现在的做法：大文件传输还是交给 ① 里证明过完全没问题的 wx.uploadFile，鉴权问题
+ *    单独解决——先走一次 callContainer（小请求，身份正常验）换一个几分钟内有效的
+ *    签名令牌，再拿这个令牌走 wx.uploadFile 直传（?upload_token=…，server 端
+ *    owner_gate 认这个令牌）。两条路各自做自己擅长的事，不互相将就。
  */
 export async function uploadCutout(
   filePath: string,
@@ -252,18 +193,9 @@ export async function uploadCutout(
     formData.r = String(opts.circle.r);
   }
   if (!isWeapp) return uploadViaUploadFile(`${LOCAL_BASE}/api/cutout`, filePath, formData);
-  // 走 callContainer，不走 CLOUDRUN_HTTP_BASE 直连域名——真机实测炸出的坑：
-  // wx.uploadFile 直连公网域名是裸 HTTP 请求，微信不会往里注入 X-WX-OPENID
-  // （那个头只有走 callContainer 桥接才会自动加），配了 YIDANSHI_OWNER_OPENID 后
-  // 抠图这个写接口会被 owner_gate 当成陌生人拦下，报「需要主人令牌」。
-  // 纸上食单/教程卡这类只读晒图接口没这问题，是因为它们本来就走 ?t= 访客口令通道，
-  // 不依赖 openid；抠图是写操作，必须要主人身份，只能走 callContainer。
-  // 但 callContainer 的 data 体积上限约 1MB——手机原图哪怕选了"压缩"档还是能到几 MB，
-  // 真机实测直接报 -606001（包体超限）。第一版压到 1600px/quality82 固定参数仍不够
-  // （真机实测同样炸 -606001，说明是赌参数不可靠）——改成压完实测字节数，不够小就用
-  // 更狠的参数重压，而不是赌一组固定数字。cutout.py 最终卡片只有 1024px，
-  // 压到 900px 都还绰绰有余，不影响可用精度。
-  return uploadViaCallContainer("/api/cutout", await shrinkForUpload(filePath), formData);
+  const { token } = await request<{ token: string }>("/api/cutout-token", "POST");
+  const url = `${CLOUDRUN_HTTP_BASE}/api/cutout?upload_token=${encodeURIComponent(token)}`;
+  return uploadViaUploadFile(url, filePath, formData);
 }
 
 // ---------- 接口（与 web/src/api.ts 对应） ----------

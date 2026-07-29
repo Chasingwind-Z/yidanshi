@@ -1,6 +1,7 @@
 """一箪食 · 后端。启动：scripts/dev.sh 或 .venv/bin/uvicorn server.app:app --port 18100"""
 from __future__ import annotations
 
+import hashlib
 import hmac
 import math
 import os
@@ -48,6 +49,30 @@ OWNER_OPENID = os.environ.get("YIDANSHI_OWNER_OPENID", "").strip()
 _PUBLIC_API = {"/api/guest/menu", "/api/guest/order", "/api/guest/order-status",
                "/api/whoami"}  # 开令牌后仍对访客开放的接口
 
+# 抠图上传短时令牌：callContainer 官方文档写明「文本请求限 100KiB」，真机实测哪怕把照片
+# 压到几十 KB 依然报 -606001——问题不在体积，是这条通道压根不适合传文件（官方也明确说
+# 不建议）。改回真正扛得住大文件的 wx.uploadFile 直连域名，但那条路拿不到 X-WX-OPENID，
+# 于是拆成两步：先走一次 callContainer（小请求，openid 正常鉴权）换一个几分钟内有效的
+# 签名令牌，再拿这个令牌走 wx.uploadFile 上传——不存令牌，纯计算验证，不占存储。
+def _cutout_token_secret() -> str:
+    return OWNER_TOKEN or OWNER_OPENID  # 只有两者之一非空时这条令牌路径才会被启用
+
+
+def _mint_cutout_token(ttl: int = 180) -> str:
+    expiry = str(int(time.time()) + ttl)
+    sig = hmac.new(_cutout_token_secret().encode(), expiry.encode(), hashlib.sha256).hexdigest()[:24]
+    return f"{expiry}.{sig}"
+
+
+def _check_cutout_token(token: str) -> bool:
+    expiry_s, _, sig = token.partition(".")
+    if not expiry_s.isdigit() or not sig:
+        return False
+    if time.time() > int(expiry_s):
+        return False
+    expected = hmac.new(_cutout_token_secret().encode(), expiry_s.encode(), hashlib.sha256).hexdigest()[:24]
+    return hmac.compare_digest(sig, expected)
+
 
 @app.middleware("http")
 async def owner_gate(request: Request, call_next):
@@ -66,6 +91,10 @@ async def owner_gate(request: Request, call_next):
                     except Exception:  # noqa: BLE001 —— 存储抖动别把鉴权打成 500，回落主人鉴权
                         gt = ""
                     ok = bool(gt) and hmac.compare_digest(t.encode("utf-8"), gt.encode("utf-8"))
+            # 抠图 wx.uploadFile 直连域名拿不到 openid，认一次性签名令牌（见 _mint_cutout_token）
+            if not ok and p == "/api/cutout" and _cutout_token_secret():
+                ut = request.query_params.get("upload_token", "")
+                ok = bool(ut) and _check_cutout_token(ut)
             if not ok and OWNER_TOKEN:  # 原有口令逻辑原样保留
                 supplied = (request.headers.get("x-token")
                             or request.cookies.get("yidanshi_token")
@@ -447,6 +476,14 @@ def ingredient_info(name: str):
 
 
 # ---------- 抠图 ----------
+
+@app.post("/api/cutout-token")
+def cutout_token():
+    """给「wx.uploadFile 直连域名传抠图」换一个几分钟内有效的签名令牌——这一步是小请求，
+    走 callContainer 正常拿 openid 鉴权；令牌拿到后再走 /api/cutout?upload_token=…，
+    那条大文件上传路径本身不认 openid（callContainer 传不了大文件，见 owner_gate 里的注释）。"""
+    return {"token": _mint_cutout_token()}
+
 
 @app.post("/api/cutout")
 async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(False),
