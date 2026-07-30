@@ -210,18 +210,20 @@ export default function RecipePage({ id }: { id: string }) {
 
   // 单张生成/重画（跟 genAll 共用 aiIllustrate，只是不循环）。食材图标是全食单共享库
   // （按食材名存，不分菜谱）——重画会连带换掉其他菜里同名食材的图标，重画前如实提示一句。
-  const [genOneBusy, setGenOneBusy] = useState(false);
-  async function genOne(kind: "ing" | "step", index1: number, label: string, isRegen: boolean) {
-    if (genOneBusy || !canIllust) return;
+  // 按 key（ing{i}/step{i}）分开记 busy，不用整页锁一个全局 loading——生成要几十秒，
+  // 只该那一条自己显示"生成中"，其余照常能看能操作。
+  const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
+  async function genOne(kind: "ing" | "step", index1: number, key: string, label: string, isRegen: boolean) {
+    if (genBusy[key] || !canIllust) return;
     if (isRegen && !confirm(kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`)) return;
-    setGenOneBusy(true);
+    setGenBusy(b => ({ ...b, [key]: true }));
     try {
       await api.aiIllustrate(id, kind, index1);
       setR(await api.recipe(id));
     } catch (e) {
       alert(`没画成：${(e as Error).message}`);
     } finally {
-      setGenOneBusy(false);
+      setGenBusy(b => ({ ...b, [key]: false }));
     }
   }
 
@@ -377,12 +379,14 @@ export default function RecipePage({ id }: { id: string }) {
                     setIngSheet({ name: ing.name, amount: sAmount, iconUrl: ingIllust,
                       itemKcal: sKcal, grams: sGrams ?? undefined,
                       // 生成期间会重拉 r，弹层里 iconUrl 是打开那一刻的旧值，先关掉弹层避免看着像"点了没反应"
-                      onGen: canIllust && !ingIllust ? () => { setIngSheet(null); genOne("ing", i + 1, ing.name, false); } : undefined,
-                      onRegen: canIllust && ingIllust ? () => { setIngSheet(null); genOne("ing", i + 1, ing.name, true); } : undefined })}>
+                      onGen: canIllust && !ingIllust ? () => { setIngSheet(null); genOne("ing", i + 1, `ing${i}`, ing.name, false); } : undefined,
+                      onRegen: canIllust && ingIllust ? () => { setIngSheet(null); genOne("ing", i + 1, `ing${i}`, ing.name, true); } : undefined })}>
                     <div className="icon">
-                      {ingIllust
-                        ? <img src={ingIllust} alt={ing.name} onError={() => failIcon(i)} />
-                        : icon(ing.name)}
+                      {genBusy[`ing${i}`]
+                        ? <span className="iconbusy">…</span>
+                        : ingIllust
+                          ? <img src={ingIllust} alt={ing.name} onError={() => failIcon(i)} />
+                          : icon(ing.name)}
                     </div>
                     <div className="n">{ing.name}</div>
                     {/* 有人类可读用量就显示它；没有但录了克重（编辑器选库内食材时自动补的）就显示约估克重——
@@ -404,11 +408,15 @@ export default function RecipePage({ id }: { id: string }) {
                       <>
                         <img src={r.illust.steps[i]} alt="" />
                         {canIllust && (
-                          <div className="gentext" onClick={() => genOne("step", i + 1, `步骤 ${i + 1}`, true)}>🔄 重新生成</div>
+                          <div className="gentext" onClick={() => genOne("step", i + 1, `step${i}`, `步骤 ${i + 1}`, true)}>
+                            {genBusy[`step${i}`] ? "生成中…" : "🔄 重新生成"}
+                          </div>
                         )}
                       </>
                     ) : canIllust && (
-                      <button className="btn ghost stepgen" onClick={() => genOne("step", i + 1, `步骤 ${i + 1}`, false)}>✨ 生成插画</button>
+                      <button className="btn ghost stepgen" onClick={() => genOne("step", i + 1, `step${i}`, `步骤 ${i + 1}`, false)}>
+                        {genBusy[`step${i}`] ? "生成中…" : "✨ 生成插画"}
+                      </button>
                     )}
                   </div>
                 </div>

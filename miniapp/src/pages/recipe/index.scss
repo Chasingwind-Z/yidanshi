@@ -197,6 +197,11 @@
   height: 100%;
   border-radius: 50%;
 }
+.iconbusy {
+  color: var(--dim);
+  font-size: 20px;
+  letter-spacing: 1px;
+}
 .ing .n {
   font-size: 13px;
   margin-top: 5px;
@@ -245,14 +250,13 @@
   border-radius: 6px;
   margin-top: 8px;
 }
+/* 缺插画时的生成入口：故意做得跟 dimtext 一样轻——这是可选功能，不是内容的一部分，
+ * 不该用色块/边框跟步骤文字抢视觉重量（zzf 反馈"挡在那里"，边框按钮改成纯文字提示） */
 .stepgen {
   display: inline-block;
-  color: var(--accent);
+  color: var(--dim);
   font-size: 12.5px;
-  margin-top: 8px;
-  padding: 4px 10px;
-  border: 1px solid var(--line-box);
-  border-radius: 20px;
+  margin-top: 6px;
 }
 
 .tips {

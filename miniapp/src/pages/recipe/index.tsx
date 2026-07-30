@@ -202,6 +202,7 @@ export default function RecipePage() {
   // 插画重画：URL 是按 recipe_id/index 定死的，重画是原地覆盖同一个 URL——不加个查询参数
   // 逼一下，<Image> 不会知道要重新拉取
   const [illustBust, setIllustBust] = useState<Record<string, number>>({});
+  const [illustBusy, setIllustBusy] = useState<Record<string, boolean>>({});
 
   // 改一笔：完整编辑器（对齐 web Editor），菜名/分类/来源/食材/步骤/贴士/热量/耗时/份数/难度都能改；
   // AI 重新整理也在这张表单里，整理完只是把值填进这些 state，还没存盘
@@ -305,8 +306,10 @@ export default function RecipePage() {
 
   // 生成/长按重画食材图标/步骤插画（同一 recipe_id+index 的 URL 是定死的，原地覆盖）。
   // 食材图标是全食单共享库（按食材名存，不分菜谱）——重画会连带换掉其他菜里同名食材的图标。
+  // zzf 反馈锁屏体验不好：生图要几十秒，不该拿 Taro.showLoading 挡住整个页面——
+  // 改成只有那一条自己显示"生成中"，其余照常能看能操作。
   async function _doIllust(kind: "ing" | "step", index1: number, key: string) {
-    Taro.showLoading({ title: "画画中，几十秒…", mask: true });
+    setIllustBusy(b => ({ ...b, [key]: true }));
     try {
       await api.aiIllustrate(id, kind, index1);
       setR(await api.recipe(id));
@@ -314,17 +317,17 @@ export default function RecipePage() {
     } catch (e) {
       Taro.showToast({ title: `没画成：${(e as Error).message}`, icon: "none" });
     } finally {
-      Taro.hideLoading();
+      setIllustBusy(b => ({ ...b, [key]: false }));
     }
   }
   /** 还没画过：直接生成，不用确认（没有旧图可覆盖，没有意外可言）*/
   function genIllust(kind: "ing" | "step", index1: number, key: string) {
-    if (!r || !canIllust) return;
+    if (!r || !canIllust || illustBusy[key]) return;
     _doIllust(kind, index1, key);
   }
   /** 已经有图：重画前问一句——食材图标是共享库，重画会连带换掉其他菜里同名食材的图 */
   async function regenIllust(kind: "ing" | "step", index1: number, key: string, label: string) {
-    if (!r || !canIllust) return;
+    if (!r || !canIllust || illustBusy[key]) return;
     const { confirm } = await Taro.showModal({
       title: "重新生成插画",
       content: kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`,
@@ -623,11 +626,13 @@ export default function RecipePage() {
                         ? () => { setIngSheet(null); genIllust("ing", i + 1, `ing${i}`); }
                         : undefined })}>
                     <View className="icon">
-                      {ingIllust
-                        ? <Image src={bustUrl(ingIllust, `ing${i}`)} mode="aspectFill" className="iconimg"
-                            onError={() => failImg(`ing${i}`)}
-                            onLongPress={() => regenIllust("ing", i + 1, `ing${i}`, ing.name)} />
-                        : <Text>{icon(ing.name)}</Text>}
+                      {illustBusy[`ing${i}`]
+                        ? <Text className="iconbusy">…</Text>
+                        : ingIllust
+                          ? <Image src={bustUrl(ingIllust, `ing${i}`)} mode="aspectFill" className="iconimg"
+                              onError={() => failImg(`ing${i}`)}
+                              onLongPress={() => regenIllust("ing", i + 1, `ing${i}`, ing.name)} />
+                          : <Text>{icon(ing.name)}</Text>}
                     </View>
                     <View className="n">{ing.name}</View>
                     {sAmount !== "" && <View className="a">{sAmount}</View>}
@@ -649,7 +654,9 @@ export default function RecipePage() {
                         onLongPress={() => regenIllust("step", i + 1, `step${i}`, `步骤 ${i + 1}`)} />
                     ) : canIllust && (
                       <View className="stepgen" hoverClass="btn-hover"
-                        onClick={() => genIllust("step", i + 1, `step${i}`)}>✨ 生成插画</View>
+                        onClick={() => genIllust("step", i + 1, `step${i}`)}>
+                        {illustBusy[`step${i}`] ? "生成中…" : "✨ 生成插画"}
+                      </View>
                     )}
                   </View>
                 </View>
