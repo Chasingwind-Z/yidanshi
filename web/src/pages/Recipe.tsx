@@ -162,6 +162,23 @@ export default function RecipePage({ id }: { id: string }) {
     if (sessionStorage.getItem("fan_relaxed")) { sessionStorage.removeItem("fan_relaxed"); setRelaxed(true); }
   }, [id]);
 
+  // 文字教程卡：跟「导出长图」不是一回事——那个是拿页面上已渲染的 DOM 截图（html-to-image），
+  // 这个是叫服务端 recipecard.render_text 现画一张（AI 把步骤揉成一段教程文案，按内容缓存，
+  // 第一次生成要等十几秒）。miniapp 那边同一个 /api/recipecard?style=text 接口，两端并存。
+  const [textCardBusy, setTextCardBusy] = useState(false);
+  async function openTextCard() {
+    if (textCardBusy) return;
+    setTextCardBusy(true);
+    try {
+      const { token } = await api.guestLink();
+      window.open(`/api/recipecard/${encodeURIComponent(id)}?style=text&t=${encodeURIComponent(token)}`, "_blank");
+    } catch (e) {
+      alert((e as Error).message || "文字教程卡没能生成");
+    } finally {
+      setTextCardBusy(false);
+    }
+  }
+
   async function exportCard() {
     if (!cardRef.current) return;
     setExporting(true);
@@ -406,6 +423,11 @@ export default function RecipePage({ id }: { id: string }) {
         {hasTutorial && (
           <button className="btn ghost" disabled={exporting} onClick={exportCard}>
             {exporting ? "导出中…" : "导出长图"}
+          </button>
+        )}
+        {hasTutorial && (
+          <button className="btn ghost" disabled={textCardBusy} onClick={openTextCard}>
+            {textCardBusy ? "生成中…" : "文字教程卡"}
           </button>
         )}
         <button className="btn ghost" onClick={() => setEditing(true)}>编辑做法</button>

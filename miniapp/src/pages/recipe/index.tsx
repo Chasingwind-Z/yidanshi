@@ -190,6 +190,7 @@ export default function RecipePage() {
   // 份量换算：纯展示倍数，不写回菜谱、不影响上面「整锅 kcal」的记录口径
   const [portion, setPortion] = useState(1);
   const [posterUrl, setPosterUrl] = useState("");
+  const [posterTitle, setPosterTitle] = useState("插画教程卡");
   // 云端迁移后，illust / 封面 URL 可能指向不存在的 COS 对象（只有 demo 菜生成过插画）：
   // 记下哪些图 404，当作「没插画」处理，别显示裂图
   const [imgErr, setImgErr] = useState<Record<string, boolean>>({});
@@ -438,9 +439,11 @@ export default function RecipePage() {
     Taro.switchTab({ url: "/pages/record/index" });
   }
 
-  // 教程卡：服务端 PIL 渲染的竖版长图。<Image> 的镜像请求带不上 openid 头，
-  // 走 guest token 的 query 放行通道（?t=…）；weapp 需要公网访问域名才能直连图。
-  async function openCard() {
+  // 教程卡：服务端 PIL 渲染的竖版长图，图文版/纯文字版并存（zzf 定的，不是替代关系）。
+  // <Image> 的镜像请求带不上 openid 头，走 guest token 的 query 放行通道（?t=…）；
+  // weapp 需要公网访问域名才能直连图。纯文字版第一次生成要等 AI 润色（十几秒），
+  // 之后同一道菜按内容缓存，秒开。
+  async function openCard(style: "photo" | "text") {
     const base = isWeapp ? CLOUDRUN_HTTP_BASE : LOCAL_BASE;
     if (!base) {
       Taro.showToast({ title: "云端才支持导出（未配公网访问域名）", icon: "none" });
@@ -448,10 +451,16 @@ export default function RecipePage() {
     }
     try {
       const { token } = await api.guestLink();
-      setPosterUrl(`${base}/api/recipecard/${encodeURIComponent(id)}?t=${encodeURIComponent(token)}`);
+      setPosterTitle(style === "text" ? "文字教程卡" : "插画教程卡");
+      setPosterUrl(`${base}/api/recipecard/${encodeURIComponent(id)}?style=${style}&t=${encodeURIComponent(token)}`);
     } catch (e) {
       toastErr(e, "教程卡没能生成");
     }
+  }
+
+  async function pickCardStyle() {
+    const { tapIndex } = await Taro.showActionSheet({ itemList: ["图文版（插画）", "文字版（AI 润色）"] });
+    openCard(tapIndex === 1 ? "text" : "photo");
   }
 
   async function delRecipe() {
@@ -685,7 +694,7 @@ export default function RecipePage() {
       <View className="record-cta">
         <View className="btn" hoverClass="btn-hover" onClick={goRecord}>做完了？记一餐</View>
         {hasTutorial && (
-          <View className="btn ghost" hoverClass="btn-hover" onClick={openCard}>教程卡（长按可存图）</View>
+          <View className="btn ghost" hoverClass="btn-hover" onClick={pickCardStyle}>教程卡（长按可存图）</View>
         )}
         {r.steps.length > 0 && (
           <View className="btn ghost" hoverClass="btn-hover" onClick={() => openEditor()}>改一笔</View>
@@ -693,7 +702,7 @@ export default function RecipePage() {
         <View className="btn ghost danger" hoverClass="btn-hover" onClick={delRecipe}>删除这道菜</View>
       </View>
       {ingSheet && <IngredientSheet {...ingSheet} onClose={() => setIngSheet(null)} />}
-      {posterUrl !== "" && <PosterSheet url={posterUrl} title="插画教程卡" onClose={() => setPosterUrl("")} />}
+      {posterUrl !== "" && <PosterSheet url={posterUrl} title={posterTitle} onClose={() => setPosterUrl("")} />}
 
       {fill === "edit" && (
         <View className="sheetscrim" catchMove onClick={() => { if (!eSaving) setFill(""); }}>

@@ -95,6 +95,33 @@ def ingredient_info(name: str) -> dict:
             "tips": [str(x).strip() for x in r.get("tips", []) if str(x).strip()][:2]}
 
 
+TEXT_CARD_PROMPT = """把下面这份结构化菜谱改写成一段读起来舒服的教程文案，像朋友随口教你做这道菜那样自然、口语化，不要机械地逐条复述食材/步骤列表。规则：
+- 开头一两句带出这道菜的味道/口感/适合的场合，别写"这是一道...的菜"这种套话。
+- 正文把做法步骤揉成 2-4 段流畅的话（不是编号列表），段落之间用一个空行分隔；关键的火候/
+  时长/顺序要如实保留，不能因为要写得"顺"就丢步骤，也不能编造原步骤里没有的细节。
+- 食材和用量已经单独展示在文案上方，正文不用逐个报菜名用量，除非某个食材的用法值得特别提一句。
+- 别用"首先/然后/接着/最后"这类机械连接词开头，也别写"总的来说""希望你喜欢"这类结尾废话。
+- 直接输出正文，不要标题，不要出现"以下是""好的，这是"这类开场白。
+
+菜名：{name}
+食材：{ingredients}
+原步骤（已验证真实，照实揉成段落，别遗漏）：
+{steps}
+小贴士：{tips}
+"""
+
+
+def polish_text(recipe: dict) -> str:
+    """结构化菜谱 → 一段 AI 润色过的教程文案（纯文字教程卡用）。调用方负责缓存，
+    这里每调用一次就真花一次钱/一次延迟，不做去重判断。"""
+    ings = "、".join(f"{i['name']}{i.get('amount', '')}" for i in recipe.get("ingredients", [])) or "无"
+    steps = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(recipe.get("steps", []))) or "无"
+    tips = "；".join(recipe.get("tips", [])) or "无"
+    prompt = TEXT_CARD_PROMPT.format(name=recipe["name"], ingredients=ings, steps=steps, tips=tips)
+    out = ask(prompt, timeout=60)
+    return out.strip()
+
+
 def fetch_link_text(url: str) -> str:
     """从分享链接尽力抓取文案（抖音分享页/通用 og 标签），失败返回空串由调用方兜底。"""
     import html as _html

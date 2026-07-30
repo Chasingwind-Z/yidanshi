@@ -1,20 +1,22 @@
-"""插画教程卡：单道菜谱 → 一张竖版可保存分享的教程长卡（Pillow 合成，纸底+朱砂+楷体）。
+"""教程卡：单道菜谱 → 一张竖版可保存分享的教程长卡（Pillow 合成，纸底+朱砂+楷体）。
+两种版式共用卡头/食材呈现风格/小贴士/朱批/落款，区别只在做法怎么呈现：
 
-版式自上而下：卡头（菜名楷体大字 + 分类小字 + 朱砂方印「箪」，有 servings 时右上
-「这锅够吃 N 餐」）→ 封面圆角大图（有则放，无则跳过）→ 食材网格（每行四格：插画
-图标或浅色圆底首字 + 名字 + 用量小字）→ 做法逐步（朱砂圈号①②③ + 文字自动换行 +
-步骤插画圆角小图）→ 小贴士（虚线框，有才出）→ 朱批（历次记录的备注，朱砂楷体，
-有才出）→ 落款（小印 + 一箪食）。高度按内容自适应；与 menuposter/monthcard 同一
-视觉语言；不放二维码/链接/水印。
+- render()：插画版（默认）。食材网格（插画图标/首字圆底 + 名字 + 用量）→ 做法逐步
+  （朱砂圈号①②③ + 文字自动换行 + 步骤插画圆角小图）。
+- render_text()：纯文字版。食材收成一行文本；做法不逐条列，是 AI 把结构化步骤揉成
+  的一段流畅教程文案（server/llm.polish_text），按菜谱内容 hash 本地文件缓存，
+  菜谱没改就不重新调用 AI。两版都不放二维码/链接/水印，高度按内容自适应。
 """
 from __future__ import annotations
 
+import hashlib
 import io
+from pathlib import Path
 from urllib.parse import quote
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import photostore, storage
+from . import llm, photostore, storage
 from .menuposter import (CARD, DIM, FRAME, HAIR, INK, PAPER, RED, _cn, _font,
                          _kai, _rounded, _song)
 
@@ -116,6 +118,70 @@ def _ing_icon(icon: Image.Image | None, name: str, cell: int) -> Image.Image:
     return im
 
 
+def _tips_height(tips: list[str], f_tip: ImageFont.FreeTypeFont) -> int:
+    if not tips:
+        return 0
+    return 90 + sum(len(_wrap(t, f_tip, CW - 92)) for t in tips) * 46 + 60
+
+
+def _tips_block(d: ImageDraw.ImageDraw, y: int, tips: list[str]) -> int:
+    """虚线框小贴士，有才画；返回画完后的 y。"""
+    if not tips:
+        return y
+    f_tip = _song(29)
+    y += 16
+    top = y
+    y += 30
+    ft = _kai(31, bold=True)
+    d.text((M + 26, y + 16), "小贴士", font=ft, anchor="lm", fill=INK)
+    y += 56
+    for t in tips:
+        for j, ln in enumerate(_wrap(t, f_tip, CW - 92)):
+            d.text((M + 26, y + 14), ("· " if j == 0 else "  ") + ln,
+                   font=f_tip, anchor="lm", fill=(87, 80, 63))
+            y += 46
+    y += 24
+    _dashed_rect(d, (M, top, W - M, y), FRAME)
+    y += 30
+    return y
+
+
+def _notes_height(notes: list[tuple[str, str]], f_note: ImageFont.FreeTypeFont) -> int:
+    if not notes:
+        return 0
+    return 74 + sum(len(_wrap(f"某月某日：{n}", f_note, CW - 20)) for _, n in notes) * 48 + 20
+
+
+def _notes_block(d: ImageDraw.ImageDraw, y: int, notes: list[tuple[str, str]]) -> int:
+    """朱批（历次记录带备注的），有才画；返回画完后的 y。"""
+    if not notes:
+        return y
+    f_note = _kai(29)
+    y = _section(d, y, "朱批", color=RED)
+    for date_s, note in notes:
+        try:
+            mo, day = int(date_s[5:7]), int(date_s[8:10])
+            when = f"{_cn(mo)}月{_cn(day)}日"
+        except (ValueError, IndexError):
+            when = date_s
+        for ln in _wrap(f"{when}：{note}", f_note, CW - 20):
+            d.text((M + 10, y + 14), ln, font=f_note, anchor="lm", fill=RED)
+            y += 48
+        y += 6
+    y += 14
+    return y
+
+
+def _footer(d: ImageDraw.ImageDraw, y: int) -> int:
+    """落款：小印 + 一箪食（无二维码），三种版式共用。"""
+    y += 56
+    cx, s = W // 2, 58
+    d.rounded_rectangle([cx - s // 2, y, cx + s // 2, y + s], radius=9, fill=RED)
+    d.text((cx, y + s // 2 - 2), "箪", font=_font(34), anchor="mm", fill=CARD)
+    d.text((cx, y + s + 34), "一箪食", font=_kai(28), anchor="mm", fill=DIM)
+    return y + s + 34 + 64
+
+
 def _finish(img: Image.Image, y: int) -> bytes:
     """裁到实际高度 → 画文武边 → 放大到 1440 → PNG 字节（整卡/占位卡同一出口）。"""
     img = img.crop((0, 0, W, y))
@@ -123,7 +189,7 @@ def _finish(img: Image.Image, y: int) -> bytes:
     d.rectangle([26, 26, W - 27, y - 27], outline=FRAME, width=3)
     d.rectangle([38, 38, W - 39, y - 39], outline=HAIR, width=1)
 
-    # 出图放大到 1440 宽（zzf 真机反馈 1080 偏小）：字号常量散布 16 处不宜整体重排，
+    # 出图放大到 1440 宽（zzf 真机反馈 1080 偏小）：字号常量散布多处不宜整体重排，
     # LANCZOS 1.33x 的文字软化在手机/小红书二压后不可察，换来一档更"大"的成图
     out_w = 1440
     img = img.resize((out_w, int(img.height * out_w / W)), Image.LANCZOS)
@@ -171,18 +237,32 @@ def _placeholder_card(r: dict) -> bytes:
     d.text((W // 2, y), "贴个链接让 AI 代录，或手动补几笔", font=_kai(32), anchor="mm", fill=RED)
     y += 190 if cover is None else 72
 
-    # ---- 落款（同整卡）----
-    cx, s = W // 2, 58
-    d.rounded_rectangle([cx - s // 2, y, cx + s // 2, y + s], radius=9, fill=RED)
-    d.text((cx, y + s // 2 - 2), "箪", font=_font(34), anchor="mm", fill=CARD)
-    d.text((cx, y + s + 34), "一箪食", font=_kai(28), anchor="mm", fill=DIM)
-    y += s + 34 + 64
+    return _finish(img, _footer(d, y))
 
-    return _finish(img, y)
+
+def _header(d: ImageDraw.ImageDraw, r: dict, name_lines: list[str]) -> int:
+    """卡头：菜名楷体大字 + 分类/难度/耗时小字 + 朱砂方印「箪」+（有 servings 时）右上份数。
+    三种版式共用；返回画完卡头（不含封面）后的 y。"""
+    y = 96
+    seal_size = 96
+    _seal(d, W - M - seal_size, y - 6, seal_size)
+    fk = _kai(72, bold=True)
+    for ln in name_lines:
+        d.text((M, y + 40), ln, font=fk, anchor="lm", fill=INK)
+        y += 92
+    sub = " · ".join(x for x in (
+        r.get("category"), r.get("difficulty"),
+        f"{r['minutes']} 分钟" if r.get("minutes") else "") if x)
+    if sub:
+        d.text((M, y + 10), sub, font=_song(28), anchor="lm", fill=DIM)
+    servings = r.get("servings") or 1
+    if servings > 1:
+        d.text((W - M, y + 10), f"这锅够吃 {servings} 餐", font=_kai(27), anchor="rm", fill=RED)
+    return y + 66
 
 
 def render(rid: str) -> bytes:
-    """→ png 字节。菜谱不存在抛 LookupError。"""
+    """→ png 字节（插画版）。菜谱不存在抛 LookupError。"""
     r = storage.get_recipe(rid)
     if r is None:
         raise LookupError("没有这道菜")
@@ -230,32 +310,14 @@ def render(rid: str) -> bytes:
             est += len(_wrap(s, f_step, step_w)) * 50 + 30
             if step_imgs[i] is not None:
                 est += step_imgs[i].height + 20
-    if tips:
-        est += 90 + sum(len(_wrap(t, f_tip, CW - 92)) for t in tips) * 46 + 60
-    if notes:
-        est += 74 + sum(len(_wrap(f"某月某日：{n}", f_note, CW - 20)) for _, n in notes) * 48 + 20
+    est += _tips_height(tips, f_tip)
+    est += _notes_height(notes, f_note)
     est += 260 + 200  # 落款 + 富余（最后按实际 y 裁掉）
 
     img = Image.new("RGB", (W, est), PAPER)
     d = ImageDraw.Draw(img)
 
-    # ---- 卡头 ----
-    y = 96
-    seal_size = 96
-    _seal(d, W - M - seal_size, y - 6, seal_size)
-    fk = _kai(72, bold=True)
-    for ln in name_lines:
-        d.text((M, y + 40), ln, font=fk, anchor="lm", fill=INK)
-        y += 92
-    sub = " · ".join(x for x in (
-        r.get("category"), r.get("difficulty"),
-        f"{r['minutes']} 分钟" if r.get("minutes") else "") if x)
-    if sub:
-        d.text((M, y + 10), sub, font=_song(28), anchor="lm", fill=DIM)
-    servings = r.get("servings") or 1
-    if servings > 1:
-        d.text((W - M, y + 10), f"这锅够吃 {servings} 餐", font=_kai(27), anchor="rm", fill=RED)
-    y += 66
+    y = _header(d, r, name_lines)
 
     # ---- 封面 ----
     if cover is not None:
@@ -295,44 +357,122 @@ def render(rid: str) -> bytes:
                 y += im.height + 12
             y += 28
 
-    # ---- 小贴士 ----
-    if tips:
-        y += 16
-        top = y
-        y += 30
-        ft = _kai(31, bold=True)
-        d.text((M + 26, y + 16), "小贴士", font=ft, anchor="lm", fill=INK)
-        y += 56
-        for t in tips:
-            for j, ln in enumerate(_wrap(t, f_tip, CW - 92)):
-                d.text((M + 26, y + 14), ("· " if j == 0 else "  ") + ln,
-                       font=f_tip, anchor="lm", fill=(87, 80, 63))
-                y += 46
-        y += 24
-        _dashed_rect(d, (M, top, W - M, y), FRAME)
+    y = _tips_block(d, y, tips)
+    y = _notes_block(d, y, notes)
+    y = _footer(d, y)
+
+    return _finish(img, y)
+
+
+# ---------- 纯文字版 ----------
+
+def _text_cache_path(rid: str) -> Path:
+    d = storage.DATA / "textcard"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{rid}.txt"
+
+
+def _content_hash(r: dict) -> str:
+    """润色文案只依赖这几个字段——改的是别的字段（比如封面、评分）不该触发重新调用 AI。"""
+    blob = "|".join([
+        r["name"],
+        "、".join(f"{i['name']}{i.get('amount', '')}" for i in r["ingredients"]),
+        "\n".join(r["steps"]),
+        "；".join(r["tips"]),
+    ])
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def polished_text(rid: str, force: bool = False) -> str:
+    """AI 润色文案，按内容 hash 缓存到本地文件——菜谱没改就不重新调用 AI（省钱，也稳，
+    不会同一道菜每次开教程卡文风都不一样）。force=True 跳过缓存强制重新润色。"""
+    r = storage.get_recipe(rid)
+    if r is None:
+        raise LookupError("没有这道菜")
+    path = _text_cache_path(rid)
+    h = _content_hash(r)
+    if not force and path.exists():
+        cached = path.read_text(encoding="utf-8")
+        first_line, _, body = cached.partition("\n")
+        if first_line == h and body.strip():
+            return body
+    text = llm.polish_text(r)
+    path.write_text(f"{h}\n{text}", encoding="utf-8")
+    return text
+
+
+def render_text(rid: str) -> bytes:
+    """→ png 字节（纯文字版）。做法是 AI 把结构化步骤揉成的一段教程文案，不逐条列；
+    食材收成一行文本。菜谱不存在抛 LookupError，AI 通道没配/失败抛 RuntimeError。"""
+    r = storage.get_recipe(rid)
+    if r is None:
+        raise LookupError("没有这道菜")
+    if not r["steps"]:
+        return _placeholder_card(r)
+
+    prose = polished_text(rid)
+
+    notes = sorted([(str(m["date"]), str(m["note"])) for m in storage.list_meals()
+                    if m.get("recipe_id") == rid and m.get("note")], reverse=True)[:5]
+    ings, tips = r["ingredients"], r["tips"]
+
+    cover = _load(r.get("cover"))
+    if cover is not None:
+        cover = _rounded(_fit(cover, CW, 560), 26)
+
+    f_body = _kai(34)
+    f_ing = _song(28)
+    f_tip = _song(29)
+    f_note = _kai(29)
+    name_lines = _wrap(r["name"], _kai(72, bold=True), CW - 96 - 40)
+
+    ing_line = "、".join(f"{i['name']}{i.get('amount', '')}" for i in ings)
+    ing_wrapped = _wrap(ing_line, f_ing, CW) if ing_line else []
+
+    paragraphs = [p.strip() for p in prose.split("\n\n") if p.strip()] or [prose.strip() or "（AI 没写出内容）"]
+    body_lines: list[str] = []
+    for pi, p in enumerate(paragraphs):
+        body_lines.extend(_wrap(p, f_body, CW))
+        if pi < len(paragraphs) - 1:
+            body_lines.append("")  # 空行分段
+
+    est = 120 + len(name_lines) * 92 + 130
+    if cover is not None:
+        est += cover.height + 44
+    if ing_wrapped:
+        est += 74 + len(ing_wrapped) * 42 + 30
+    est += 74 + len(body_lines) * 58 + 30
+    est += _tips_height(tips, f_tip)
+    est += _notes_height(notes, f_note)
+    est += 260 + 200
+
+    img = Image.new("RGB", (W, est), PAPER)
+    d = ImageDraw.Draw(img)
+
+    y = _header(d, r, name_lines)
+
+    if cover is not None:
+        img.paste(cover, (M, y), cover)
+        y += cover.height + 44
+
+    if ing_wrapped:
+        y = _section(d, y, "食材")
+        for ln in ing_wrapped:
+            d.text((M, y + 14), ln, font=f_ing, anchor="lm", fill=DIM)
+            y += 42
         y += 30
 
-    # ---- 朱批 ----
-    if notes:
-        y = _section(d, y, "朱批", color=RED)
-        for date_s, note in notes:
-            try:
-                mo, day = int(date_s[5:7]), int(date_s[8:10])
-                when = f"{_cn(mo)}月{_cn(day)}日"
-            except (ValueError, IndexError):
-                when = date_s
-            for ln in _wrap(f"{when}：{note}", f_note, CW - 20):
-                d.text((M + 10, y + 14), ln, font=f_note, anchor="lm", fill=RED)
-                y += 48
-            y += 6
-        y += 14
+    if body_lines:
+        y = _section(d, y, "做法")
+        for ln in body_lines:
+            if ln == "":
+                y += 24
+                continue
+            d.text((M, y + 16), ln, font=f_body, anchor="lm", fill=INK)
+            y += 58
 
-    # ---- 落款（同 menuposter：小印 + 一箪食，无二维码）----
-    y += 56
-    cx, s = W // 2, 58
-    d.rounded_rectangle([cx - s // 2, y, cx + s // 2, y + s], radius=9, fill=RED)
-    d.text((cx, y + s // 2 - 2), "箪", font=_font(34), anchor="mm", fill=CARD)
-    d.text((cx, y + s + 34), "一箪食", font=_kai(28), anchor="mm", fill=DIM)
-    y += s + 34 + 64
+    y = _tips_block(d, y, tips)
+    y = _notes_block(d, y, notes)
+    y = _footer(d, y)
 
     return _finish(img, y)

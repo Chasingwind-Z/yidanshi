@@ -1061,15 +1061,18 @@ def menu_poster(style: str = "family", page: int = 1):
 
 
 @app.get("/api/recipecard/{rid}")
-def recipe_card(rid: str):
-    """插画教程卡：单道菜 → 一张竖版可保存分享的教程长卡（PNG，宽 1080 高自适应）。"""
+def recipe_card(rid: str, style: str = "photo"):
+    """教程卡：单道菜 → 一张竖版可保存分享的教程长卡（PNG，宽 1080 高自适应）。
+    style=photo（默认，插画版）/ text（纯文字版，AI 把步骤揉成一段教程文案，按内容缓存）。"""
     from . import recipecard
     from fastapi.responses import Response
 
     try:
-        png = recipecard.render(rid)
+        png = recipecard.render_text(rid) if style == "text" else recipecard.render(rid)
     except LookupError as e:
         raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
     return Response(png, media_type="image/png")
 
 
