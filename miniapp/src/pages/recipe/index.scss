@@ -145,22 +145,27 @@
   letter-spacing: 2px;
   border-bottom: 1px solid var(--line-box);
 }
-/* 份量换算：纯展示倍数，不写回菜谱。步进器而非固定挡位——想要几倍自己点出来，不用弹键盘 */
+/* 份量换算：纯展示倍数，不写回菜谱。步进器而非固定挡位——想要几倍自己点出来，不用弹键盘。
+ * 这栏在两栏网格里挤在窄的左列（食材准备），「份量 [－] 1× [＋]」四项 + 提示语挤一行时
+ * 数字前会被硬换行（zzf 反馈排版有问题）——拆成两行：控件一行、提示语另起一行，
+ * 控件本身缩小到肯定能塞进窄列的宽度。 */
 .portionbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
   margin: 0 0 12px;
 }
+.portionrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .stepbtn {
-  width: 52rpx;
-  height: 52rpx;
+  width: 44rpx;
+  height: 44rpx;
+  flex-shrink: 0;
   border: 1px solid var(--line-box);
   border-radius: 8rpx;
   background: rgba(47, 42, 34, 0.03);
   color: var(--ink);
-  font-size: 30rpx;
+  font-size: 26rpx;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -172,8 +177,12 @@
 .portionval {
   font-family: var(--mono);
   font-size: 13px;
-  min-width: 30px;
+  min-width: 26px;
   text-align: center;
+}
+.portionhint {
+  display: block;
+  margin-top: 4px;
 }
 .ing {
   display: flex;

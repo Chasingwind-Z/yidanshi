@@ -320,14 +320,23 @@ export default function RecipePage() {
       setIllustBusy(b => ({ ...b, [key]: false }));
     }
   }
+  // 云托管容器就 0.25 核，扛不住并发——真机实测过好几条同时点「生成插画」，
+  // 有的直接 cloud.callContainer:fail。改成全局只认一张在飞（批量按钮和单张按钮共用
+  // 这一个闸门），别的按钮点了也不发请求，只提示等一下（跟改动前那个批量按钮
+  // "排队一张张来"的老行为对齐，不是新限制，是补回来）。
+  function anyGenBusy(): boolean {
+    return gen.running || Object.values(illustBusy).some(Boolean);
+  }
   /** 还没画过：直接生成，不用确认（没有旧图可覆盖，没有意外可言）*/
   function genIllust(kind: "ing" | "step", index1: number, key: string) {
     if (!r || !canIllust || illustBusy[key]) return;
+    if (anyGenBusy()) { Taro.showToast({ title: "先等这张画完", icon: "none" }); return; }
     _doIllust(kind, index1, key);
   }
   /** 已经有图：重画前问一句——食材图标是共享库，重画会连带换掉其他菜里同名食材的图 */
   async function regenIllust(kind: "ing" | "step", index1: number, key: string, label: string) {
     if (!r || !canIllust || illustBusy[key]) return;
+    if (anyGenBusy()) { Taro.showToast({ title: "先等这张画完", icon: "none" }); return; }
     const { confirm } = await Taro.showModal({
       title: "重新生成插画",
       content: kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`,
@@ -521,6 +530,10 @@ export default function RecipePage() {
   // 逐张生成：每张成功后刷新 r（下一轮 missing 会跟着收窄）——中途退出小程序也不怕，
   // 未生成的还是 missing，回来再点一次接着补，不需要额外断点续传逻辑
   async function genAll() {
+    if (Object.values(illustBusy).some(Boolean)) {
+      Taro.showToast({ title: "先等单张生成完", icon: "none" });
+      return;
+    }
     setGen({ running: true, msg: "" });
     for (let k = 0; k < missing.length; k++) {
       const it = missing[k];
@@ -601,13 +614,15 @@ export default function RecipePage() {
               <View className="th4">食材准备</View>
               {r.ingredients.length > 0 && (
                 <View className="portionbar">
-                  <Text className="dimtext">份量</Text>
-                  <View className={`stepbtn${portion <= 0.5 ? " off" : ""}`} hoverClass="btn-hover"
-                    onClick={() => portion > 0.5 && setPortion(p => Math.max(0.5, Math.round((p - 0.5) * 10) / 10))}>－</View>
-                  <Text className="portionval">{portion}×</Text>
-                  <View className={`stepbtn${portion >= 5 ? " off" : ""}`} hoverClass="btn-hover"
-                    onClick={() => portion < 5 && setPortion(p => Math.min(5, Math.round((p + 0.5) * 10) / 10))}>＋</View>
-                  {portion !== 1 && <Text className="dimtext">量按 {portion} 倍算，只是看看，不改菜谱</Text>}
+                  <View className="portionrow">
+                    <Text className="dimtext">份量</Text>
+                    <View className={`stepbtn${portion <= 0.5 ? " off" : ""}`} hoverClass="btn-hover"
+                      onClick={() => portion > 0.5 && setPortion(p => Math.max(0.5, Math.round((p - 0.5) * 10) / 10))}>－</View>
+                    <Text className="portionval">{portion}×</Text>
+                    <View className={`stepbtn${portion >= 5 ? " off" : ""}`} hoverClass="btn-hover"
+                      onClick={() => portion < 5 && setPortion(p => Math.min(5, Math.round((p + 0.5) * 10) / 10))}>＋</View>
+                  </View>
+                  {portion !== 1 && <Text className="dimtext portionhint">量按 {portion} 倍算，只是看看，不改菜谱</Text>}
                 </View>
               )}
               {r.ingredients.map((ing, i) => {

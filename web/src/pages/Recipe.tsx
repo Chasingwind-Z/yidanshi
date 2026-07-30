@@ -213,8 +213,11 @@ export default function RecipePage({ id }: { id: string }) {
   // 按 key（ing{i}/step{i}）分开记 busy，不用整页锁一个全局 loading——生成要几十秒，
   // 只该那一条自己显示"生成中"，其余照常能看能操作。
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
+  // 云托管容器就 0.25 核，扛不住并发（真机实测好几条同时生成会有请求直接失败）——
+  // 全局只认一张在飞，别的按钮点了也不发请求。
   async function genOne(kind: "ing" | "step", index1: number, key: string, label: string, isRegen: boolean) {
     if (genBusy[key] || !canIllust) return;
+    if (gen.running || Object.values(genBusy).some(Boolean)) { alert("先等这张画完"); return; }
     if (isRegen && !confirm(kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`)) return;
     setGenBusy(b => ({ ...b, [key]: true }));
     try {
@@ -261,6 +264,7 @@ export default function RecipePage({ id }: { id: string }) {
   ].filter((x): x is { kind: "ing" | "step"; index: number; label: string } => x !== null);
 
   async function genAll() {
+    if (Object.values(genBusy).some(Boolean)) { alert("先等单张生成完"); return; }
     setGen({ running: true, msg: "" });
     for (let k = 0; k < missing.length; k++) {
       const it = missing[k];
@@ -359,13 +363,15 @@ export default function RecipePage({ id }: { id: string }) {
               <h4>食材准备</h4>
               {r.ingredients.length > 0 && (
                 <div className="portionbar">
-                  <span className="dimtext">份量</span>
-                  <button className="stepbtn" disabled={portion <= 0.5}
-                    onClick={() => setPortion(p => Math.max(0.5, Math.round((p - 0.5) * 10) / 10))}>－</button>
-                  <span className="portionval">{portion}×</span>
-                  <button className="stepbtn" disabled={portion >= 5}
-                    onClick={() => setPortion(p => Math.min(5, Math.round((p + 0.5) * 10) / 10))}>＋</button>
-                  {portion !== 1 && <span className="dimtext">量按 {portion} 倍算，只是看看，不改菜谱</span>}
+                  <div className="portionrow">
+                    <span className="dimtext">份量</span>
+                    <button className="stepbtn" disabled={portion <= 0.5}
+                      onClick={() => setPortion(p => Math.max(0.5, Math.round((p - 0.5) * 10) / 10))}>－</button>
+                    <span className="portionval">{portion}×</span>
+                    <button className="stepbtn" disabled={portion >= 5}
+                      onClick={() => setPortion(p => Math.min(5, Math.round((p + 0.5) * 10) / 10))}>＋</button>
+                  </div>
+                  {portion !== 1 && <span className="dimtext portionhint">量按 {portion} 倍算，只是看看，不改菜谱</span>}
                 </div>
               )}
               {r.ingredients.map((ing, i) => {
