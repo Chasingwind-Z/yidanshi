@@ -1,17 +1,23 @@
-// 菜谱详情（移植 web/src/pages/Recipe.tsx；砍掉：导出长图、完整编辑器（改一笔轻表单代替）。
+// 菜谱详情（移植 web/src/pages/Recipe.tsx；砍掉：导出长图）。
 // 插画生成按钮 R28 补齐（此前漏移植，zzf 反馈"为什么没有生成卡通做法图"）——逐张调用与
 // web genAll 同构；食材小百科（两行营养对照 + 粗估/无法折算三分支文案）逻辑照抄 web。
 // P1-3：没录做法的菜不再指去 Web——AI 代录（贴链接/文案）+ 手动补几笔两个补录入口）
+// R30：「改一笔」从「只改食材+步骤」的轻表单升级成跟 web Editor 对齐的完整编辑器
+// （菜名/分类/来源/难度/耗时/份数/贴士都能改，AI 重新整理也挪进同一张表单，不再另开一层、
+// 也不再整理完立刻存盘——先填进表单，看一眼再决定存不存）；zzf 反馈"改一笔只能改食材量"
+// 命中的正是这个缺口。
 import { useEffect, useState } from "react";
 import Taro, { useRouter } from "@tarojs/taro";
 import { Image, Input, ScrollView, Text, Textarea, View } from "@tarojs/components";
 import { api, absUrl, toastErr, uploadCutout, type IngInfo, type Meal, type Recipe } from "../../api";
-import { extractAndApply, extractFromVideoAndApply } from "../../aiExtract";
 import { Loading, PosterSheet } from "../../components/common";
 import { CLOUDRUN_HTTP_BASE, LOCAL_BASE } from "../../config";
 import "./index.scss";
 
 const isWeapp = process.env.TARO_ENV === "weapp";
+
+const DEFAULT_CATS = ["饭粥", "面点", "羹汤", "小炒", "甜点"];
+const DIFFICULTIES = ["简单", "中等", "硬菜"];
 
 const EMOJI: [RegExp, string][] = [
   [/蛋/, "🥚"], [/玉米/, "🌽"], [/番茄|西红柿/, "🍅"], [/土豆|红薯|薯/, "🥔"], [/萝卜/, "🥕"],
@@ -165,6 +171,16 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: Sh
   );
 }
 
+type IngRow = { name: string; amount: string; grams: number | null; amount0: string };
+
+/** AI 整理返回的字段塞进编辑表单——只填表单，不立刻存盘，让人看一眼再决定要不要保存
+ * （web Editor.applyExtracted 同款做法；跟 aiExtract.ts 的 extractAndApply 不同，那个是
+ * 「记新菜/补做法」场景整理完直接存，这里是「改一笔」场景，随时能推翻重填）。 */
+interface Extracted {
+  name: string; category: string; ingredients: Recipe["ingredients"]; steps: string[]; tips: string[];
+  kcal: number | null; minutes: number | null; difficulty?: string | null; video_can_retry: boolean;
+}
+
 export default function RecipePage() {
   const router = useRouter();
   const id = decodeURIComponent(router.params.id ?? "");
@@ -178,18 +194,34 @@ export default function RecipePage() {
   // 记下哪些图 404，当作「没插画」处理，别显示裂图
   const [imgErr, setImgErr] = useState<Record<string, boolean>>({});
   const failImg = (k: string) => setImgErr(m => (m[k] ? m : { ...m, [k]: true }));
+  // 插画重画：URL 是按 recipe_id/index 定死的，重画是原地覆盖同一个 URL——不加个查询参数
+  // 逼一下，<Image> 不会知道要重新拉取
+  const [illustBust, setIllustBust] = useState<Record<string, number>>({});
 
-  // 补录做法（P1-3）：ai = 贴教程链接/文案 AI 代录；manual = 手动补几笔轻表单
-  const [fill, setFill] = useState<"" | "ai" | "manual">("");
+  // 改一笔：完整编辑器（对齐 web Editor），菜名/分类/来源/食材/步骤/贴士/热量/耗时/份数/难度都能改；
+  // AI 重新整理也在这张表单里，整理完只是把值填进这些 state，还没存盘
+  const [fill, setFill] = useState<"" | "edit">("");
+  const [eName, setEName] = useState("");
+  const [eCategory, setECategory] = useState("");
+  const [eCustomCat, setECustomCat] = useState(false);
+  const [eSource, setESource] = useState("");
+  const [eDifficulty, setEDifficulty] = useState("");
+  const [eMinutes, setEMinutes] = useState("");
+  const [eServings, setEServings] = useState("1");
+  const [eKcal, setEKcal] = useState("");
+  const [eTips, setETips] = useState("");
+  // amount0 = 打开表单时的原始用量文案。克重（grams）是跟着某一句用量算出来的，
+  // 用量被改了旧克重就不再可信——存回时按 amount0 比对，改过的行丢弃陈旧克重（宁可留白也不装懂）。
+  const [eIngs, setEIngs] = useState<IngRow[]>([]);
+  const [eSteps, setESteps] = useState<string[]>([]);
+  const [eSaving, setESaving] = useState(false);
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState("");
-  // amount0 = 打开表单时的原始用量文案。克重（grams）是跟着某一句用量算出来的，
-  // 用量被改了旧克重就不再可信——存回时按 amount0 比对，改过的行丢弃陈旧克重（宁可留白也不装懂）。
-  // 小程序这张表单没有克重输入框（web 编辑器有），所以只能这样兜。
-  const [mIngs, setMIngs] = useState<{ name: string; amount: string; grams: number | null; amount0: string }[]>([]);
-  const [mSteps, setMSteps] = useState<string[]>([]);
-  const [mSaving, setMSaving] = useState(false);
+  // 文案没写具体做法（⚠️ 诚实警示）时才露出「看视频再试一次」——真花钱、真慢，不是默认路径
+  const [eVideoLink, setEVideoLink] = useState<string | null>(null);
+  const [eVideoCanRetry, setEVideoCanRetry] = useState(false);
+  const [eVideoBusy, setEVideoBusy] = useState(false);
   // 从朱批点进来时要定位到哪个食材（ScrollView scrollIntoView 找的就是这个行的 id）
   const [hitIngName, setHitIngName] = useState("");
   // 插画教程卡：逐张生成（每张几十秒），与 web genAll 同构；canIllust 决定按钮是否露出
@@ -266,83 +298,137 @@ export default function RecipePage() {
     }
   }
 
-  function openManual(highlight?: string) {
+  // 长按食材图标/步骤插画重新生成（同一 recipe_id+index 的 URL 是定死的，原地覆盖）。
+  // 食材图标是全食单共享库（按食材名存，不分菜谱）——重画会连带换掉其他菜里同名食材的图标，
+  // 这跟「生成插画教程卡」批量生成时的既有行为一致，如实提示一句避免意外。
+  async function regenIllust(kind: "ing" | "step", index1: number, key: string, label: string) {
+    if (!r || !canIllust) return;
+    const { confirm } = await Taro.showModal({
+      title: "重新生成插画",
+      content: kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`,
+      confirmText: "重画",
+    });
+    if (!confirm) return;
+    Taro.showLoading({ title: "画画中，几十秒…", mask: true });
+    try {
+      await api.aiIllustrate(id, kind, index1);
+      setR(await api.recipe(id));
+      setIllustBust(b => ({ ...b, [key]: Date.now() }));
+    } catch (e) {
+      Taro.showToast({ title: `没画成：${(e as Error).message}`, icon: "none" });
+    } finally {
+      Taro.hideLoading();
+    }
+  }
+  function bustUrl(u: string, key: string): string {
+    const v = illustBust[key];
+    return v ? `${absUrl(u)}${u.includes("?") ? "&" : "?"}v=${v}` : absUrl(u);
+  }
+
+  function openEditor(highlight?: string) {
     if (!r) return;
+    setEName(r.name);
+    setECategory(r.category);
+    setECustomCat(!!r.category && !DEFAULT_CATS.includes(r.category));
+    setESource(r.source);
+    setEDifficulty(r.difficulty ?? "");
+    setEMinutes(r.minutes != null ? String(r.minutes) : "");
+    setEServings(r.servings && r.servings > 1 ? String(r.servings) : "1");
+    setEKcal(r.kcal != null ? String(r.kcal) : "");
+    setETips(r.tips.join("\n"));
     // 预填已有食材（grams 跟着行走，存回不丢克重）；空表给三行起步
     const ings = r.ingredients.map(x => ({ name: x.name, amount: x.amount, grams: x.grams ?? null, amount0: x.amount }));
     while (ings.length < 3) ings.push({ name: "", amount: "", grams: null, amount0: "" });
-    setMIngs(ings);
-    setMSteps(r.steps.length > 0 ? [...r.steps] : ["", "", ""]);
+    setEIngs(ings);
+    setESteps(r.steps.length > 0 ? [...r.steps] : ["", "", ""]);
     setHitIngName(highlight ?? "");
-    setFill("manual");
+    setAiText("");
+    setAiErr("");
+    setEVideoLink(null);
+    setEVideoCanRetry(false);
+    setFill("edit");
   }
 
-  async function aiGo() {
+  function applyExtracted(x: Extracted) {
+    if (x.name) setEName(x.name);
+    if (x.category) { setECategory(x.category); setECustomCat(!DEFAULT_CATS.includes(x.category)); }
+    setEIngs(x.ingredients.length > 0
+      ? x.ingredients.map(i => ({ name: i.name, amount: i.amount ?? "", grams: i.grams ?? null, amount0: i.amount ?? "" }))
+      : [{ name: "", amount: "", grams: null, amount0: "" }]);
+    setESteps(x.steps.length > 0 ? x.steps : [""]);
+    setETips(x.tips.join("\n"));
+    if (x.kcal != null) setEKcal(String(x.kcal));
+    if (x.difficulty) setEDifficulty(x.difficulty);
+    if (x.minutes != null) setEMinutes(String(x.minutes));
+  }
+
+  async function aiFillInEditor() {
     const raw = aiText.trim();
-    if (!raw || aiBusy || !r) return;
+    if (!raw || aiBusy) return;
     setAiErr("");
     setAiBusy(true);
-    const source = r.source;
+    setEVideoCanRetry(false);
     try {
-      const result = await extractAndApply(id, raw, source);
-      setR(result.recipe);
-      setFill("");
+      // 粘的是分享链接（抖音口令等）→ 服务端抓文案；纯文字 → 直接整理
+      const link = raw.match(/https?:\/\/\S+/)?.[0];
+      const isLinkMode = !!link && raw.replace(/https?:\/\/\S+/, "").trim().length < 80;
+      const x = await api.aiExtract(isLinkMode ? "" : raw, eSource, isLinkMode ? link : undefined);
+      applyExtracted(x);
+      setEVideoLink(isLinkMode ? link! : null);
+      setEVideoCanRetry(x.video_can_retry);
       setAiText("");
-      // 文案没写具体做法（⚠️ 诚实警示）时才问要不要看视频——真花钱、真慢，不是默认路径
-      if (result.videoCanRetry && result.link) {
-        const link = result.link;
-        const { confirm } = await Taro.showModal({
-          title: "文案没写具体做法",
-          content: "要不要看视频再核对一次做法？要花一点点钱，十几秒就好。",
-          confirmText: "看视频", cancelText: "就这样",
-        });
-        if (confirm) {
-          Taro.showLoading({ title: "AI 在看视频…", mask: true });
-          try {
-            setR(await extractFromVideoAndApply(id, link, source));
-          } catch (e) {
-            Taro.showToast({ title: `看视频失败：${(e as Error).message}`, icon: "none" });
-          } finally {
-            Taro.hideLoading();
-          }
-        }
-      }
     } catch (e) {
-      // 分不清是通道没配还是这次没成：问一下 ai/status——没配好就别让人干等，转手动
-      const st = await api.aiStatus().catch(() => null);
-      if (st && !st.available) {
-        Taro.showToast({ title: "AI 通道没配好，先手动补几笔吧", icon: "none" });
-        openManual();
-      } else {
-        setAiErr((e as Error).message || "管家没研读出来，再试一次？");
-      }
+      setAiErr((e as Error).message || "管家没研读出来，再试一次？");
     } finally {
       setAiBusy(false);
     }
   }
 
-  async function manualSave() {
-    if (!r || mSaving) return;
-    const ings = mIngs
+  async function aiFillFromVideoInEditor() {
+    if (!eVideoLink || eVideoBusy) return;
+    setEVideoBusy(true);
+    try {
+      const x = await api.aiExtractVideo(eVideoLink);
+      applyExtracted(x);
+      setEVideoCanRetry(false);
+    } catch (e) {
+      Taro.showToast({ title: `看视频失败：${(e as Error).message}`, icon: "none" });
+    } finally {
+      setEVideoBusy(false);
+    }
+  }
+
+  async function editorSave() {
+    if (!r || eSaving) return;
+    if (!eName.trim()) {
+      Taro.showToast({ title: "先给这道菜起个名字", icon: "none" });
+      return;
+    }
+    const ings = eIngs
       // 用量被改过的行丢弃旧克重：那个数是按原来那句用量算的（「2个」→110g），
-      // 改成「3个」还留 110g，会让营养折算给出一个自信的错数（IngredientSheet 会写「本菜行已按 110g 折算」）
+      // 改成「3个」还留 110g，会让营养折算给出一个自信的错数
       .map(x => ({ name: x.name.trim(), amount: x.amount.trim(),
                    grams: x.amount.trim() === x.amount0.trim() ? x.grams : null }))
       .filter(x => x.name !== "");
-    const steps = mSteps.map(s => s.trim()).filter(s => s !== "");
-    if (ings.length === 0 && steps.length === 0) {
-      Taro.showToast({ title: "食材或步骤先写一条", icon: "none" });
-      return;
-    }
-    setMSaving(true);
+    const steps = eSteps.map(s => s.trim()).filter(s => s !== "");
+    setESaving(true);
     try {
-      await api.saveRecipe({ id, ingredients: ings, steps });
+      await api.saveRecipe({
+        id, name: eName.trim(), category: eCategory.trim() || r.category, source: eSource.trim(),
+        kcal: eKcal.trim() ? Number(eKcal) : null,
+        minutes: eMinutes.trim() ? Number(eMinutes) : null,
+        difficulty: eDifficulty || null,
+        servings: Math.max(1, Number(eServings) || 1),
+        ingredients: ings,
+        steps,
+        tips: eTips.split("\n").map(s => s.trim()).filter(Boolean),
+      });
       setR(await api.recipe(id));
       setFill("");
     } catch (e) {
       toastErr(e);
     } finally {
-      setMSaving(false);
+      setESaving(false);
     }
   }
 
@@ -427,6 +513,7 @@ export default function RecipePage() {
   }
   const coverInfo = r.cover ? coverPhotoId(r.cover) : null;
   const coverSrc = absUrl(r.cover) + (coverBust ? (r.cover.includes("?") ? "&" : "?") + "v=" + coverBust : "");
+  const cats = DEFAULT_CATS.includes(eCategory) || !eCategory ? DEFAULT_CATS : [eCategory, ...DEFAULT_CATS];
   return (
     <View className="page">
       {r.cover !== "" && !imgErr.cover ? (
@@ -511,7 +598,9 @@ export default function RecipePage() {
                       itemKcal: sKcal, grams: sGrams ?? undefined })}>
                     <View className="icon">
                       {ingIllust
-                        ? <Image src={absUrl(ingIllust)} mode="aspectFill" className="iconimg" onError={() => failImg(`ing${i}`)} />
+                        ? <Image src={bustUrl(ingIllust, `ing${i}`)} mode="aspectFill" className="iconimg"
+                            onError={() => failImg(`ing${i}`)}
+                            onLongPress={() => regenIllust("ing", i + 1, `ing${i}`, ing.name)} />
                         : <Text>{icon(ing.name)}</Text>}
                     </View>
                     <View className="n">{ing.name}</View>
@@ -519,7 +608,7 @@ export default function RecipePage() {
                   </View>
                 );
               })}
-              <View className="dimtext tap-hint">点食材看小百科</View>
+              <View className="dimtext tap-hint">点食材看小百科{canIllust ? " · 长按图标可重画" : ""}</View>
             </View>
             <View className="tcol tcol-steps">
               <View className="th4">做法步骤</View>
@@ -529,7 +618,9 @@ export default function RecipePage() {
                   <View className="stepbody">
                     <View className="steptext">{s}</View>
                     {r.illust?.steps[i] && !imgErr[`step${i}`] &&
-                      <Image src={absUrl(r.illust.steps[i])} mode="widthFix" className="stepimg" onError={() => failImg(`step${i}`)} />}
+                      <Image src={bustUrl(r.illust.steps[i], `step${i}`)} mode="widthFix" className="stepimg"
+                        onError={() => failImg(`step${i}`)}
+                        onLongPress={() => regenIllust("step", i + 1, `step${i}`, `步骤 ${i + 1}`)} />}
                   </View>
                 </View>
               ))}
@@ -549,7 +640,7 @@ export default function RecipePage() {
                 const hit = matchIngredient(a.note, r.ingredients.map(ing => ing.name));
                 return (
                   <View className={`zhupi-p${hit ? " clickable" : ""}`} key={i}
-                    onClick={hit ? () => openManual(hit) : undefined}>
+                    onClick={hit ? () => openEditor(hit) : undefined}>
                     <Text className="zhupi-date">{a.date.slice(5).replace("-", "/")}</Text>
                     {a.note}
                     {hit && <Text className="zhupi-hint"> → 改「{hit}」</Text>}
@@ -571,15 +662,15 @@ export default function RecipePage() {
         </View>
       )}
 
-      {/* 没有步骤就给补录入口（拆掉「v1 请在 Web 端录入」那堵墙）：AI 代录 + 手动轻表单 */}
+      {/* 没有步骤就给补录入口（拆掉「v1 请在 Web 端录入」那堵墙）：都进同一张完整编辑器，
+          区别只是有没有先贴链接给 AI 整理 */}
       {r.steps.length === 0 && (
         <View className={hasTutorial ? "fillwall slim" : "empty fillwall"}>
           {!hasTutorial && <View className="empty-ico">🍚</View>}
           <Text>{hasTutorial ? "做法步骤还空着" : "还没录做法"}</Text>
           <View className="fill-acts">
-            <View className="btn" hoverClass="btn-hover"
-              onClick={() => { setAiErr(""); setFill("ai"); }}>贴教程链接/文案，AI 帮你录</View>
-            <View className="btn ghost" hoverClass="btn-hover" onClick={() => openManual()}>手动补几笔</View>
+            <View className="btn" hoverClass="btn-hover" onClick={() => openEditor()}>贴教程链接/文案，AI 帮你录</View>
+            <View className="btn ghost" hoverClass="btn-hover" onClick={() => openEditor()}>手动补几笔</View>
           </View>
         </View>
       )}
@@ -596,82 +687,133 @@ export default function RecipePage() {
         {hasTutorial && (
           <View className="btn ghost" hoverClass="btn-hover" onClick={openCard}>教程卡（长按可存图）</View>
         )}
-        {/* M1：有步骤的菜此前没有任何编辑入口（补录墙只在 steps===0 时出现）——
-            补一个轻量「改一笔」，复用 openManual 并预填现有食材/步骤，别让用户从空表单重打一遍 */}
         {r.steps.length > 0 && (
-          <View className="btn ghost" hoverClass="btn-hover" onClick={() => openManual()}>改一笔</View>
+          <View className="btn ghost" hoverClass="btn-hover" onClick={() => openEditor()}>改一笔</View>
         )}
         <View className="btn ghost danger" hoverClass="btn-hover" onClick={delRecipe}>删除这道菜</View>
       </View>
       {ingSheet && <IngredientSheet {...ingSheet} onClose={() => setIngSheet(null)} />}
       {posterUrl !== "" && <PosterSheet url={posterUrl} title="插画教程卡" onClose={() => setPosterUrl("")} />}
 
-      {fill === "ai" && (
-        <View className="sheetscrim" catchMove onClick={() => { if (!aiBusy) setFill(""); }}>
+      {fill === "edit" && (
+        <View className="sheetscrim" catchMove onClick={() => { if (!eSaving) setFill(""); }}>
           <View className="ingsheet fillsheet" onClick={e => e.stopPropagation()}>
             <View className="fillhead">
-              <Text className="filltitle">AI 帮你录</Text>
-              <View className="close" onClick={() => { if (!aiBusy) setFill(""); }}>✕</View>
-            </View>
-            <Textarea className="ta filltext" placeholderClass="ph" value={aiText} maxlength={-1}
-              disabled={aiBusy} onInput={e => setAiText(e.detail.value)}
-              placeholder="粘贴抖音/小红书/B站/下厨房链接，或整段文字教程" />
-            {aiErr !== "" && <View className="err">{aiErr}</View>}
-            <View className={`btn fillgo ${aiBusy || aiText.trim() === "" ? "disabled" : ""}`}
-              hoverClass="btn-hover" onClick={aiGo}>
-              {aiBusy ? "管家研读中，约需十几秒…" : "开始整理"}
-            </View>
-          </View>
-        </View>
-      )}
-
-      {fill === "manual" && (
-        <View className="sheetscrim" catchMove onClick={() => setFill("")}>
-          <View className="ingsheet fillsheet" onClick={e => e.stopPropagation()}>
-            <View className="fillhead">
-              {/* 同一张轻表单两处复用：没步骤时是「补几笔」，已有步骤时是「改一笔」——标题跟着场景走 */}
-              <Text className="filltitle">{r.steps.length > 0 ? "改一笔" : "手动补几笔"}</Text>
+              <Text className="filltitle">改一笔</Text>
               <View className="close" onClick={() => setFill("")}>✕</View>
             </View>
             <ScrollView scrollY className="fillscroll"
-              scrollIntoView={hitIngName ? `ingrow-${mIngs.findIndex(x => x.name === hitIngName)}` : undefined}>
+              scrollIntoView={hitIngName ? `ingrow-${eIngs.findIndex(x => x.name === hitIngName)}` : undefined}>
+              <View className="aibox">
+                <Textarea className="ta filltext" placeholderClass="ph" value={aiText} maxlength={-1}
+                  disabled={aiBusy} onInput={e => setAiText(e.detail.value)}
+                  placeholder="粘贴抖音/小红书/B站/下厨房链接，或整段文字教程——AI 重新整理会填进下面表单，先看一眼再决定存不存" />
+                {aiErr !== "" && <View className="err">{aiErr}</View>}
+                <View className={`btn ghost fillai ${aiBusy || aiText.trim() === "" ? "disabled" : ""}`}
+                  hoverClass="btn-hover" onClick={aiFillInEditor}>
+                  {aiBusy ? "管家研读中…" : "AI 重新整理"}
+                </View>
+                {eVideoCanRetry && eVideoLink && (
+                  <View className={`btn ghost fillai ${eVideoBusy ? "disabled" : ""}`}
+                    hoverClass="btn-hover" onClick={aiFillFromVideoInEditor}>
+                    {eVideoBusy ? "AI 在看视频…" : "文案没写做法？看视频再试一次"}
+                  </View>
+                )}
+              </View>
+
+              <View className="f">菜名</View>
+              <Input className="ipt" placeholderClass="ph" placeholder="菜名" value={eName}
+                onInput={e => setEName(e.detail.value)} />
+
+              <View className="f">分类</View>
+              <View className="chips">
+                {cats.map(c => (
+                  <View key={c} className={`chip pick${!eCustomCat && eCategory === c ? " on" : ""}`}
+                    onClick={() => { setECustomCat(false); setECategory(c); }}>{c}</View>
+                ))}
+                <View className={`chip pick${eCustomCat ? " on" : ""}`}
+                  onClick={() => { setECustomCat(true); setECategory(""); }}>自定义…</View>
+              </View>
+              {eCustomCat && (
+                <Input className="ipt" placeholderClass="ph" placeholder="分类名" value={eCategory}
+                  onInput={e => setECategory(e.detail.value)} style={{ marginTop: 8 }} />
+              )}
+
+              <View className="f">教程来源（链接，可空）</View>
+              <Input className="ipt" placeholderClass="ph" placeholder="https://…" value={eSource}
+                onInput={e => setESource(e.detail.value)} />
+
               <View className="f">食材（名字 + 用量，空行不算）</View>
-              {mIngs.map((x, i) => (
+              {eIngs.map((x, i) => (
                 <View key={i} id={`ingrow-${i}`} className={`row fillrow${x.name === hitIngName ? " hit" : ""}`}>
                   <View className="grow2">
                     <Input className="ipt" placeholderClass="ph" placeholder="食材，如：鸡蛋" value={x.name}
                       onInput={e => {
                         const v = e.detail.value;
-                        setMIngs(a => a.map((y, j) => (j === i ? { ...y, name: v } : y)));
+                        setEIngs(a => a.map((y, j) => (j === i ? { ...y, name: v } : y)));
                       }} />
                   </View>
                   <View className="grow1">
                     <Input className="ipt" placeholderClass="ph" placeholder="用量，如：2 个" value={x.amount}
                       onInput={e => {
                         const v = e.detail.value;
-                        setMIngs(a => a.map((y, j) => (j === i ? { ...y, amount: v } : y)));
+                        setEIngs(a => a.map((y, j) => (j === i ? { ...y, amount: v } : y)));
                       }} />
                   </View>
                 </View>
               ))}
               <View className="fill-add" hoverClass="btn-hover"
-                onClick={() => setMIngs(a => [...a, { name: "", amount: "", grams: null, amount0: "" }])}>＋ 再加一行食材</View>
+                onClick={() => setEIngs(a => [...a, { name: "", amount: "", grams: null, amount0: "" }])}>＋ 再加一行食材</View>
+
               <View className="f">步骤（一行一步，空行不算）</View>
-              {mSteps.map((s, i) => (
+              {eSteps.map((s, i) => (
                 <View key={i} className="fillrow">
                   <Textarea className="ta fillstep" placeholderClass="ph" autoHeight maxlength={-1}
                     placeholder={`第 ${i + 1} 步`} value={s}
                     onInput={e => {
                       const v = e.detail.value;
-                      setMSteps(a => a.map((y, j) => (j === i ? v : y)));
+                      setESteps(a => a.map((y, j) => (j === i ? v : y)));
                     }} />
                 </View>
               ))}
               <View className="fill-add" hoverClass="btn-hover"
-                onClick={() => setMSteps(a => [...a, ""])}>＋ 再加一步</View>
+                onClick={() => setESteps(a => [...a, ""])}>＋ 再加一步</View>
+
+              <View className="f">小贴士（一行一条，可空）</View>
+              <Textarea className="ta fillstep" placeholderClass="ph" autoHeight maxlength={-1}
+                placeholder="第一次做建议…" value={eTips} onInput={e => setETips(e.detail.value)} />
+
+              <View className="row" style={{ marginTop: 12 }}>
+                <View>
+                  <View className="f">热量（留空自动按食材算）</View>
+                  <Input className="ipt" type="number" placeholderClass="ph" placeholder="472" value={eKcal}
+                    onInput={e => setEKcal(e.detail.value)} />
+                </View>
+                <View>
+                  <View className="f">耗时（分钟）</View>
+                  <Input className="ipt" type="number" placeholderClass="ph" placeholder="25" value={eMinutes}
+                    onInput={e => setEMinutes(e.detail.value)} />
+                </View>
+              </View>
+              <View className="row">
+                <View>
+                  <View className="f">这锅够吃几餐</View>
+                  <Input className="ipt" type="number" value={eServings}
+                    onInput={e => setEServings(e.detail.value)} />
+                </View>
+                <View>
+                  <View className="f">难度</View>
+                  <View className="chips">
+                    {DIFFICULTIES.map(d => (
+                      <View key={d} className={`chip pick${eDifficulty === d ? " on" : ""}`}
+                        onClick={() => setEDifficulty(eDifficulty === d ? "" : d)}>{d}</View>
+                    ))}
+                  </View>
+                </View>
+              </View>
             </ScrollView>
-            <View className={`btn fillgo ${mSaving ? "disabled" : ""}`} hoverClass="btn-hover"
-              onClick={manualSave}>{mSaving ? "保存中…" : r.steps.length > 0 ? "改好了，保存" : "补好了，保存"}</View>
+            <View className={`btn fillgo ${eSaving ? "disabled" : ""}`} hoverClass="btn-hover"
+              onClick={editorSave}>{eSaving ? "保存中…" : "改好了，保存"}</View>
           </View>
         </View>
       )}

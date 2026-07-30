@@ -511,3 +511,13 @@
   font-size: 14px;
   padding: 6px 0 2px;
 }
+.aibox {
+  background: var(--card);
+  border: 1px dashed var(--line-box);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+}
+.fillai {
+  margin-top: 8px;
+}
