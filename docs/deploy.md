@@ -39,6 +39,7 @@
 | `COS_SECRET_KEY` | 腾讯云 API 密钥 Key（同上，成对） | 同上 |
 | `COS_BUCKET` | COS 桶名，形如 `yidanshi-1300000000`（**含 appid 后缀**） | 建桶后在 COS 控制台看 |
 | `COS_REGION` | COS 桶所在地域，形如 `ap-shanghai` | 建桶时选的地域 |
+| `ARK_API_KEY` | 火山方舟，**插画生成**（doubao-seedream）和**视频理解**（"看视频再试一次"）共用同一把 key——没填这两个功能在设置页会显示"✗ 不可用"，不报错、不影响其余功能 | <https://console.volcengine.com/ark> → API Key（用前先在控制台"开通模型"里把要用的模型开通，否则调用报权限错误） |
 | `YIDANSHI_OWNER_OPENID` | 主人认证：只有 openid 等于它的人才是主人（**第 6 步拿到后再填**） | 部署后调 `/api/whoami` 得到 |
 | `SERVERCHAN_SENDKEY` | 可选。填了之后有人点菜，你微信「服务通知」即时弹提醒（Server酱免费版每天 5 条，家用够） | <https://sct.ftqq.com> 微信扫码 → 关注「方糖」公众号 → 复制 SendKey（`SCT` 开头） |
 
@@ -134,7 +135,7 @@ git archive -o ~/Desktop/yidanshi-deploy.zip HEAD
 3. 关键配置：
    - **监听端口**：`80`
    - **Dockerfile 路径**：`Dockerfile`（包根目录，已在仓库里）
-   - **环境变量**：填下面 **7 个**（值从你的 `data/secrets.env` 抄过去；MySQL 三个不用填，平台自动注入）：
+   - **环境变量**：填下面 **8 个**（值从你的 `data/secrets.env` 抄过去；MySQL 三个不用填，平台自动注入）：
      ```
      DEEPSEEK_API_KEY
      ALIYUN_AK_ID
@@ -143,6 +144,7 @@ git archive -o ~/Desktop/yidanshi-deploy.zip HEAD
      COS_SECRET_KEY
      COS_BUCKET
      COS_REGION
+     ARK_API_KEY
      ```
      `YIDANSHI_OWNER_OPENID` 这一轮**先不填**（第 6 步拿到 openid 再加）。
 4. 点部署，等构建（几分钟）。构建日志出现 `uvicorn running` 即起来了。
@@ -228,6 +230,7 @@ git archive -o ~/Desktop/yidanshi-deploy.zip HEAD
 | 小程序里照片 403 / 加载不出来 | COS 桶没开公有读，或域名没进 downloadFile 合法域名 | 桶设「公有读私有写」；把 COS 桶域名加进 downloadFile 合法域名 |
 | `callContainer` 报「服务不存在 / service not found」 | 云托管服务名不是 `yidanshi`，或环境 ID 不对 | 服务名必须 `yidanshi`；核对 `config.ts` 的 `CLOUD_ENV` |
 | AI 整理菜谱报「没有可用的 AI 通道」 | 云端没填 `DEEPSEEK_API_KEY` | 环境变量补上，重新部署；本地自检 DeepSeek 要 ✓ |
+| 设置页「生图」/「视频」显示 ✗ 不可用（插画教程卡、看视频再试一次都用不了） | 云端没填 `ARK_API_KEY`，或模型没在火山方舟控制台开通 | 环境变量补上 `ARK_API_KEY`、重新部署；确认控制台「开通模型」里 doubao-seedream 和 doubao-seed 系列都点了开通 |
 | 抠图不工作，只出圆框直裁 | 阿里云没授权，或没填 `ALIYUN_AK_*` | 给 AK 加 `AliyunVIAPIFullAccess`；自检阿里云要 ✓（⚠=没授权） |
 | 主接口一直 401 | `YIDANSHI_OWNER_OPENID` 填的不是你当前小程序的 openid | 重新用 6.2 的方法取一次 openid，核对后回填、重新部署 |
 | 部署后 `/api/recipes` 500 | MySQL 插件没开，或连接串异常 | 确认 MySQL 插件已开通、和服务同环境；看构建/运行日志 |
@@ -243,7 +246,7 @@ push 即自动构建部署，不再手传 zip。
 - 一次性绑定（控制台）：服务 `yidanshi` → 发布新版本 → 部署方式选**「代码库拉取」**→
   授权 GitHub（装 App，勾选本仓库）→ 仓库 `Chasingwind-Z/yidanshi`、分支 **`release`**、
   Dockerfile 路径 `Dockerfile`、构建目录 `/` → 若有「代码变更自动重新部署」开关则打开 → 发布。
-  **首次发布时核对环境变量 12 项还在**（尤其 MYSQL_* 三件——历史上丢过一次）。
+  **首次发布时核对环境变量 13 项还在**（尤其 MYSQL_* 三件——历史上丢过一次）。
 - 日常上线（本地一条命令，无控制台操作）：
 
 ```bash
@@ -272,7 +275,7 @@ git archive -o ~/Desktop/yidanshi-deploy.zip HEAD
 
 - [ ] `python3 scripts/cloud_preflight.py`：DeepSeek / 阿里云 / COS 该用的都 ✓
 - [ ] 云托管 MySQL 插件已开、和服务同环境
-- [ ] 服务名是 `yidanshi`，端口 80，7 个环境变量都填了
+- [ ] 服务名是 `yidanshi`，端口 80，8 个环境变量都填了（含 `ARK_API_KEY`）
 - [ ] 拿到 openid 并回填 `YIDANSHI_OWNER_OPENID`、重新部署过
 - [ ] COS 桶公有读已开、桶域名进了 downloadFile 合法域名
 - [ ] 真机预览：食单/记一餐/买菜/食历能翻，拍照能记录
