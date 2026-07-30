@@ -76,10 +76,13 @@ function scaleAmount(amount: string | undefined, factor: number): string {
   return num + m[2];
 }
 
-interface SheetArgs { name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number }
+interface SheetArgs {
+  name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number;
+  onGen?: () => void;  // 没插画图标时露出「✨ 生成」；有则不传（长按图标本身重画，见列表页）
+}
 
 /** 食材小百科：点食材弹出，AI 生成一次全食单缓存复用 */
-function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: SheetArgs & { onClose: () => void }) {
+function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onGen, onClose }: SheetArgs & { onClose: () => void }) {
   const [info, setInfo] = useState<IngInfo | null>(null);
   const [err, setErr] = useState("");
   const [iconErr, setIconErr] = useState(false);
@@ -113,6 +116,7 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: Sh
                 本菜用量：{amount}{grams ? `（${rough ? "约 " : ""}${grams}g${rough ? "，粗估" : ""}）` : ""}
               </View>
             )}
+            {!iconUrl && onGen && <View className="gentext" onClick={onGen}>✨ 生成插画图标</View>}
           </View>
           <View className="close" onClick={onClose}>✕</View>
         </View>
@@ -299,17 +303,9 @@ export default function RecipePage() {
     }
   }
 
-  // 长按食材图标/步骤插画重新生成（同一 recipe_id+index 的 URL 是定死的，原地覆盖）。
-  // 食材图标是全食单共享库（按食材名存，不分菜谱）——重画会连带换掉其他菜里同名食材的图标，
-  // 这跟「生成插画教程卡」批量生成时的既有行为一致，如实提示一句避免意外。
-  async function regenIllust(kind: "ing" | "step", index1: number, key: string, label: string) {
-    if (!r || !canIllust) return;
-    const { confirm } = await Taro.showModal({
-      title: "重新生成插画",
-      content: kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`,
-      confirmText: "重画",
-    });
-    if (!confirm) return;
+  // 生成/长按重画食材图标/步骤插画（同一 recipe_id+index 的 URL 是定死的，原地覆盖）。
+  // 食材图标是全食单共享库（按食材名存，不分菜谱）——重画会连带换掉其他菜里同名食材的图标。
+  async function _doIllust(kind: "ing" | "step", index1: number, key: string) {
     Taro.showLoading({ title: "画画中，几十秒…", mask: true });
     try {
       await api.aiIllustrate(id, kind, index1);
@@ -320,6 +316,22 @@ export default function RecipePage() {
     } finally {
       Taro.hideLoading();
     }
+  }
+  /** 还没画过：直接生成，不用确认（没有旧图可覆盖，没有意外可言）*/
+  function genIllust(kind: "ing" | "step", index1: number, key: string) {
+    if (!r || !canIllust) return;
+    _doIllust(kind, index1, key);
+  }
+  /** 已经有图：重画前问一句——食材图标是共享库，重画会连带换掉其他菜里同名食材的图 */
+  async function regenIllust(kind: "ing" | "step", index1: number, key: string, label: string) {
+    if (!r || !canIllust) return;
+    const { confirm } = await Taro.showModal({
+      title: "重新生成插画",
+      content: kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`,
+      confirmText: "重画",
+    });
+    if (!confirm) return;
+    _doIllust(kind, index1, key);
   }
   function bustUrl(u: string, key: string): string {
     const v = illustBust[key];
@@ -604,7 +616,12 @@ export default function RecipePage() {
                 return (
                   <View className="ing" key={i} hoverClass="btn-hover" onClick={() =>
                     setIngSheet({ name: ing.name, amount: sAmount, iconUrl: ingIllust,
-                      itemKcal: sKcal, grams: sGrams ?? undefined })}>
+                      itemKcal: sKcal, grams: sGrams ?? undefined,
+                      // 生成期间有全屏 loading，先关掉弹层——生成完列表会自己刷新，
+                      // 不然弹层里那个 iconUrl 是打开那一刻的旧值，看着像"点了没反应"
+                      onGen: canIllust && !ingIllust
+                        ? () => { setIngSheet(null); genIllust("ing", i + 1, `ing${i}`); }
+                        : undefined })}>
                     <View className="icon">
                       {ingIllust
                         ? <Image src={bustUrl(ingIllust, `ing${i}`)} mode="aspectFill" className="iconimg"
@@ -617,7 +634,7 @@ export default function RecipePage() {
                   </View>
                 );
               })}
-              <View className="dimtext tap-hint">点食材看小百科{canIllust ? " · 长按图标可重画" : ""}</View>
+              <View className="dimtext tap-hint">点食材看小百科{canIllust ? "（没插画的弹层里能生成）· 长按已有插画可重画" : ""}</View>
             </View>
             <View className="tcol tcol-steps">
               <View className="th4">做法步骤</View>
@@ -626,10 +643,14 @@ export default function RecipePage() {
                   <View className="num">{i + 1}</View>
                   <View className="stepbody">
                     <View className="steptext">{s}</View>
-                    {r.illust?.steps[i] && !imgErr[`step${i}`] &&
+                    {r.illust?.steps[i] && !imgErr[`step${i}`] ? (
                       <Image src={bustUrl(r.illust.steps[i], `step${i}`)} mode="widthFix" className="stepimg"
                         onError={() => failImg(`step${i}`)}
-                        onLongPress={() => regenIllust("step", i + 1, `step${i}`, `步骤 ${i + 1}`)} />}
+                        onLongPress={() => regenIllust("step", i + 1, `step${i}`, `步骤 ${i + 1}`)} />
+                    ) : canIllust && (
+                      <View className="stepgen" hoverClass="btn-hover"
+                        onClick={() => genIllust("step", i + 1, `step${i}`)}>✨ 生成插画</View>
+                    )}
                   </View>
                 </View>
               ))}

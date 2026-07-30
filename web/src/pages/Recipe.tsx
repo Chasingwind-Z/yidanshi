@@ -56,7 +56,13 @@ function scaleAmount(amount: string | undefined, factor: number): string {
 }
 
 /** 食材小百科：点食材弹出，AI 生成一次全食单缓存复用 */
-function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number; onClose: () => void }) {
+interface IngSheetProps {
+  name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number;
+  onGen?: () => void;  // 没插画图标时给；有图标时给 onRegen（长按/悬停都不方便，都用点击链接）
+  onRegen?: () => void;
+}
+
+function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onGen, onRegen, onClose }: IngSheetProps & { onClose: () => void }) {
   const [info, setInfo] = useState<IngInfo | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -85,6 +91,8 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onClose }: { 
             {(amount || grams) && (
               <div className="dimtext">本菜用量：{amount}{grams ? `（${rough ? "约 " : ""}${grams}g${rough ? "，粗估" : ""}）` : ""}</div>
             )}
+            {onGen && <div className="gentext" onClick={onGen}>✨ 生成插画图标</div>}
+            {onRegen && <div className="gentext" onClick={onRegen}>🔄 重新生成图标</div>}
           </div>
           <button className="more" onClick={onClose} aria-label="关闭">✕</button>
         </div>
@@ -153,7 +161,7 @@ export default function RecipePage({ id }: { id: string }) {
   const [gen, setGen] = useState<{ running: boolean; msg: string }>({ running: false, msg: "" });
   const cardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
-  const [ingSheet, setIngSheet] = useState<{ name: string; amount?: string; iconUrl?: string; itemKcal?: number; grams?: number } | null>(null);
+  const [ingSheet, setIngSheet] = useState<IngSheetProps | null>(null);
   const [relaxed, setRelaxed] = useState(false);
   // 食材插画缺图兜底：某张 illust URL 404 时记下，回落到 EMOJI 表（照抄小程序 recipe/index.tsx）
   const [iconErr, setIconErr] = useState<Record<number, boolean>>({});
@@ -199,6 +207,23 @@ export default function RecipePage({ id }: { id: string }) {
     )).catch(() => {});
     setPortion(1);
   }, [id]);
+
+  // 单张生成/重画（跟 genAll 共用 aiIllustrate，只是不循环）。食材图标是全食单共享库
+  // （按食材名存，不分菜谱）——重画会连带换掉其他菜里同名食材的图标，重画前如实提示一句。
+  const [genOneBusy, setGenOneBusy] = useState(false);
+  async function genOne(kind: "ing" | "step", index1: number, label: string, isRegen: boolean) {
+    if (genOneBusy || !canIllust) return;
+    if (isRegen && !confirm(kind === "ing" ? `重画「${label}」的图标？（全食单同名食材会一起换新）` : `重画「${label}」这张插画？`)) return;
+    setGenOneBusy(true);
+    try {
+      await api.aiIllustrate(id, kind, index1);
+      setR(await api.recipe(id));
+    } catch (e) {
+      alert(`没画成：${(e as Error).message}`);
+    } finally {
+      setGenOneBusy(false);
+    }
+  }
 
   // 拍/选一张新照片直接当封面：走跟记餐一样的抠图，但用默认居中圆，不进精细取景层——
   // 这只是换个封面图，没必要跟「记一餐」那套精确对准盘子的流程一样重
@@ -350,7 +375,10 @@ export default function RecipePage({ id }: { id: string }) {
                 return (
                   <button className="ing" key={i} onClick={() =>
                     setIngSheet({ name: ing.name, amount: sAmount, iconUrl: ingIllust,
-                      itemKcal: sKcal, grams: sGrams ?? undefined })}>
+                      itemKcal: sKcal, grams: sGrams ?? undefined,
+                      // 生成期间会重拉 r，弹层里 iconUrl 是打开那一刻的旧值，先关掉弹层避免看着像"点了没反应"
+                      onGen: canIllust && !ingIllust ? () => { setIngSheet(null); genOne("ing", i + 1, ing.name, false); } : undefined,
+                      onRegen: canIllust && ingIllust ? () => { setIngSheet(null); genOne("ing", i + 1, ing.name, true); } : undefined })}>
                     <div className="icon">
                       {ingIllust
                         ? <img src={ingIllust} alt={ing.name} onError={() => failIcon(i)} />
@@ -372,7 +400,16 @@ export default function RecipePage({ id }: { id: string }) {
                   <div className="num">{i + 1}</div>
                   <div style={{ minWidth: 0 }}>
                     <p>{s}</p>
-                    {r.illust?.steps[i] && <img src={r.illust.steps[i]} alt="" />}
+                    {r.illust?.steps[i] ? (
+                      <>
+                        <img src={r.illust.steps[i]} alt="" />
+                        {canIllust && (
+                          <div className="gentext" onClick={() => genOne("step", i + 1, `步骤 ${i + 1}`, true)}>🔄 重新生成</div>
+                        )}
+                      </>
+                    ) : canIllust && (
+                      <button className="btn ghost stepgen" onClick={() => genOne("step", i + 1, `步骤 ${i + 1}`, false)}>✨ 生成插画</button>
+                    )}
                   </div>
                 </div>
               ))}
