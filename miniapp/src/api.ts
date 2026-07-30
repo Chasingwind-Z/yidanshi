@@ -195,7 +195,15 @@ export async function uploadCutout(
   if (!isWeapp) return uploadViaUploadFile(`${LOCAL_BASE}/api/cutout`, filePath, formData);
   const { token } = await request<{ token: string }>("/api/cutout-token", "POST");
   const url = `${CLOUDRUN_HTTP_BASE}/api/cutout?upload_token=${encodeURIComponent(token)}`;
-  return uploadViaUploadFile(url, filePath, formData);
+  // 云端容器配置很小（0.25 vCPU/512MB），手机原图不压缩直传对它是负担——这跟
+  // callContainer 那个 -606001 是两码事（那是通道本身不认，这是资源友好），
+  // 传输量本来就没必要那么大：cutout.py 最终卡片只有 1024px，收到 1800px 绰绰有余，
+  // 单档压缩，不用像 callContainer 时代那样卡死一个精确字节数上限。
+  let uploadPath = filePath;
+  try {
+    uploadPath = (await Taro.compressImage({ src: filePath, compressedWidth: 1800, quality: 85 })).tempFilePath;
+  } catch { /* 压缩失败（罕见）就传原图，wx.uploadFile 本身能扛住大文件 */ }
+  return uploadViaUploadFile(url, uploadPath, formData);
 }
 
 // ---------- 接口（与 web/src/api.ts 对应） ----------
