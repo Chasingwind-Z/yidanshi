@@ -188,7 +188,7 @@ export default function RecipePage({ id }: { id: string }) {
   async function pickNewCover(file: File) {
     setCoverBusy(true);
     try {
-      const cut = await api.cutout(file, { mode: "auto", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
+      const cut = await api.cutout(file, { mode: "plate", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
       if (cut.results.length === 0) throw new Error("没有返回结果");
       setR(await api.saveRecipe({ id, cover: cut.results[0].card }));
     } catch (e) {

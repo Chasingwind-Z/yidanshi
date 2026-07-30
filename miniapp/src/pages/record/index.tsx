@@ -185,8 +185,8 @@ export default function Record() {
     return { cx, cy, r };
   }
 
-  // mode=auto 抠成插画盘；mode=photo 留原图（不抠不合成，方裁圆角）
-  async function doCutout(path: string, mode: "auto" | "photo") {
+  // mode=plate 抠成插画盘；mode=photo 留原图（不抠不合成，方裁圆角）
+  async function doCutout(path: string, mode: "plate" | "photo") {
     const circle = currentCircle();
     setFraming(null);
     setCutting(true);
@@ -411,7 +411,7 @@ export default function Record() {
       <View className="row frameacts">
         <View className="btn ghost" hoverClass="btn-hover"
           onClick={() => doCutout(framing, "photo")}>留原图</View>
-        <View className="btn" hoverClass="btn-hover" onClick={() => doCutout(framing, "auto")}>抠成盘子 ✎</View>
+        <View className="btn" hoverClass="btn-hover" onClick={() => doCutout(framing, "plate")}>抠成盘子 ✎</View>
       </View>
       <View className="row framesubacts">
         <View className="frameskip" hoverClass="btn-hover"

@@ -22,6 +22,17 @@ const EMOJI: [RegExp, string][] = [
 ];
 const icon = (name: string) => EMOJI.find(([re]) => re.test(name))?.[1] ?? name.slice(0, 1);
 
+/** 卡片 URL 的文件名就是 photo_id（形如 p20260730093015-auto.png），后缀是当时抠的 mode——
+ * 「抠成盘子」按钮曾误传 mode=auto（无餐具，2026-07-29 前的记录都中招），能靠后缀识别出来，
+ * 用已存的抠图（cut/{photo_id}.png）现改摆盘，不用重拍 */
+function coverPhotoId(url: string): { pid: string; mode: string } | null {
+  const m = url.match(/\/([^/]+)\.png(?:\?|$)/);
+  if (!m) return null;
+  const pid = m[1];
+  const i = pid.lastIndexOf("-");
+  return i < 0 ? null : { pid, mode: pid.slice(i + 1) };
+}
+
 /** 朱批提到哪个食材：取最长命中，避免"葱"命中"葱花"和"小葱"两行时选错 */
 function matchIngredient(note: string, names: string[]): string | null {
   const hits = names.filter(n => n && note.includes(n));
@@ -188,6 +199,8 @@ export default function RecipePage() {
   // 不新增字段，直接从 meals 里按 recipe_id 过滤（数据量个人规模，客户端筛没有性能问题）
   const [photos, setPhotos] = useState<Meal[]>([]);
   const [coverBusy, setCoverBusy] = useState(false);  // 「换封面」在传新照片，避免重复点
+  const [fixBusy, setFixBusy] = useState(false);
+  const [coverBust, setCoverBust] = useState(0);  // replate 原地覆盖同名文件，靠这个逼 <Image> 重新拉取
 
   useEffect(() => {
     api.recipe(id).then(setR).catch(() => setMissing404(true));
@@ -208,6 +221,24 @@ export default function RecipePage() {
     } catch (e) { toastErr(e); }
   }
 
+  // 补个盘子：老照片当年被 mode=auto 的 bug 坑了（没摆盘），不用重拍，
+  // 拿当时存的抠图重新摆盘、原地覆盖同一张卡片 URL
+  async function fixPlate() {
+    if (!r || fixBusy) return;
+    const info = coverPhotoId(r.cover);
+    if (!info) return;
+    setFixBusy(true);
+    try {
+      await api.replate(info.pid, "plate");
+      setCoverBust(Date.now());
+      Taro.showToast({ title: "补好了", icon: "success" });
+    } catch (e) {
+      toastErr(e, "没补上，这张再重拍一次吧");
+    } finally {
+      setFixBusy(false);
+    }
+  }
+
   // 拍/选一张新照片直接当封面：走跟记餐一样的抠图，但用默认居中圆，不进精细取景层——
   // 这只是换个封面图，没必要跟「记一餐」那套精确对准盘子的流程一样重
   async function pickNewCover() {
@@ -225,7 +256,7 @@ export default function RecipePage() {
     if (!path) return;
     setCoverBusy(true);
     try {
-      const cut = await uploadCutout(path, { mode: "auto", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
+      const cut = await uploadCutout(path, { mode: "plate", circle: { cx: 0.5, cy: 0.5, r: 0.42 } });
       if (cut.results.length === 0) throw new Error("没有返回结果");
       setR(await api.saveRecipe({ id, cover: cut.results[0].card }));
     } catch (e) {
@@ -394,13 +425,19 @@ export default function RecipePage() {
     }
     setGen({ running: false, msg: "" });
   }
+  const coverInfo = r.cover ? coverPhotoId(r.cover) : null;
+  const coverSrc = absUrl(r.cover) + (coverBust ? (r.cover.includes("?") ? "&" : "?") + "v=" + coverBust : "");
   return (
     <View className="page">
       {r.cover !== "" && !imgErr.cover ? (
         <View className="hero">
-          <Image src={absUrl(r.cover)} mode="widthFix" className="heroimg" onError={() => failImg("cover")} />
+          <Image src={coverSrc} mode="widthFix" className="heroimg" onError={() => failImg("cover")} />
           <View className={`herobtn ${coverBusy ? "disabled" : ""}`} hoverClass="btn-hover"
             onClick={() => { if (!coverBusy) pickNewCover(); }}>{coverBusy ? "处理中…" : "换封面"}</View>
+          {coverInfo?.mode === "auto" && (
+            <View className={`herobtn fixbtn ${fixBusy ? "disabled" : ""}`} hoverClass="btn-hover"
+              onClick={() => { if (!fixBusy) fixPlate(); }}>{fixBusy ? "补盘子中…" : "补个盘子"}</View>
+          )}
         </View>
       ) : (
         <View className={`heroempty ${coverBusy ? "disabled" : ""}`} hoverClass="btn-hover"

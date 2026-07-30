@@ -233,6 +233,10 @@ export const api = {
   addMeal: (m: object) => request<Meal>("/api/meals", "POST", m),
   updateMeal: (id: string, patch: object) => request<Meal>(`/api/meals/${id}`, "PUT", patch),
   deleteMeal: (id: string) => request<{ ok: boolean }>(`/api/meals/${id}`, "DELETE"),
+  // 换餐具：拿已存的抠图（cut/{photo_id}.png）重新摆盘，原地覆盖同名卡片 URL，
+  // 前端不用改任何 photo_card/cover 字段，只需在渲染时加个 cache-bust 参数
+  replate: (photo_id: string, tableware = "plate") =>
+    request<{ card: string; tableware: string }>("/api/replate", "POST", { photo_id, tableware }),
   seedExamples: () => request<{ added: number }>("/api/seed-examples", "POST"),
   // 一键收走示例菜（主人）：只收还没记过餐的，记过餐的 kept 保留
   deleteSeedExamples: () => request<{ removed: number; kept: number }>("/api/seed-examples", "DELETE"),
