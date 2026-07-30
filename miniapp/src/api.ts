@@ -80,10 +80,15 @@ type Method = "GET" | "POST" | "PUT" | "DELETE";
 
 interface ContainerResp { statusCode: number; data: unknown; header?: Record<string, string> }
 
-export async function request<T>(path: string, method: Method = "GET", data?: object): Promise<T> {
+// callContainer 默认等待时间不够长——生图/AI 整理/看视频这类调用常要几十秒到一两分钟，
+// 默认超时会在服务端真正算完之前就先放弃（真机反馈"没画成：cloud.callContainer:fail"，
+// 单张、不并发也一样失败，查下来是这个）。慢接口在各自 api 调用点传更长的 timeoutMs。
+const DEFAULT_TIMEOUT_MS = 30000;
+
+export async function request<T>(path: string, method: Method = "GET", data?: object, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   if (isWeapp) {
     ensureCloud();
-    // callContainer 的 TS 定义在部分版本缺 config/path 字段，这里收窄成本地接口
+    // callContainer 的 TS 定义在部分版本缺 config/path/timeout 字段，这里收窄成本地接口
     const call = (Taro.cloud as unknown as {
       callContainer: (opt: object) => Promise<ContainerResp>;
     }).callContainer;
@@ -98,6 +103,7 @@ export async function request<T>(path: string, method: Method = "GET", data?: ob
           path,
           method,
           data,
+          timeout: timeoutMs,
           header: { "X-WX-SERVICE": SERVICE, "content-type": "application/json" },
         });
         break;
@@ -260,14 +266,15 @@ export const api = {
   /** 贴教程文案/链接 → LLM 整理成结构化菜谱（参数形状与 web/src/api.ts 一致） */
   aiExtract: (text: string, source: string, url?: string) =>
     request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string; video_can_retry: boolean }>(
-      "/api/ai/extract", "POST", { text, source, url }),
+      "/api/ai/extract", "POST", { text, source, url }, 90000),
   /** 看视频出菜谱：真花钱、真慢（约一两分钟），只应该在用户主动点了「看视频再试一次」时调 */
   aiExtractVideo: (url: string) =>
     request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string; video_can_retry: boolean }>(
-      "/api/ai/extract-video", "POST", { url }),
-  /** 逐张生成插画（食材图标/步骤图），前端按张循环调用以显示进度，与 web/src/api.ts 一致 */
+      "/api/ai/extract-video", "POST", { url }, 150000),
+  /** 逐张生成插画（食材图标/步骤图），前端按张循环调用以显示进度，与 web/src/api.ts 一致——
+   * 生图常要几十秒，callContainer 默认等待时间不够，单独给长一点 */
   aiIllustrate: (recipe_id: string, kind: "ing" | "step", index: number) =>
-    request<{ url: string }>("/api/ai/illustrate", "POST", { recipe_id, kind, index }),
+    request<{ url: string }>("/api/ai/illustrate", "POST", { recipe_id, kind, index }, 90000),
   config: () => request<ConfigPayload>("/api/config"),
   saveConfig: (c: object) => request<ConfigPayload>("/api/config", "PUT", c),
 };
