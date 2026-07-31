@@ -92,7 +92,7 @@ function IngredientSheet({ name, amount, iconUrl, itemKcal, grams, onGen, onRege
               <div className="dimtext">本菜用量：{amount}{grams ? `（${rough ? "约 " : ""}${grams}g${rough ? "，粗估" : ""}）` : ""}</div>
             )}
             {onGen && <div className="gentext" onClick={onGen}>✨ 生成插画图标</div>}
-            {onRegen && <div className="gentext" onClick={onRegen}>🔄 重新生成图标</div>}
+            {onRegen && <div className="gentext" onClick={onRegen}>重新生成图标</div>}
           </div>
           <button className="more" onClick={onClose} aria-label="关闭">✕</button>
         </div>
@@ -225,6 +225,22 @@ export default function RecipePage({ id }: { id: string }) {
       setR(await api.recipe(id));
     } catch (e) {
       alert(`没画成：${(e as Error).message}`);
+    } finally {
+      setGenBusy(b => ({ ...b, [key]: false }));
+    }
+  }
+
+  // 只支持删步骤插画：食材图标是全食单共享库，删除入口没开放（见 server/app.py 同名端点注释）
+  async function deleteStepIllust(index1: number, key: string) {
+    if (genBusy[key]) return;
+    if (gen.running || Object.values(genBusy).some(Boolean)) { alert("先等这张画完"); return; }
+    if (!confirm(`删掉「步骤 ${index1}」这张插画？删掉后随时能再生成。`)) return;
+    setGenBusy(b => ({ ...b, [key]: true }));
+    try {
+      await api.deleteIllust(id, index1);
+      setR(await api.recipe(id));
+    } catch (e) {
+      alert(`没删成：${(e as Error).message}`);
     } finally {
       setGenBusy(b => ({ ...b, [key]: false }));
     }
@@ -414,8 +430,13 @@ export default function RecipePage({ id }: { id: string }) {
                       <>
                         <img src={r.illust.steps[i]} alt="" />
                         {canIllust && (
-                          <div className="gentext" onClick={() => genOne("step", i + 1, `step${i}`, `步骤 ${i + 1}`, true)}>
-                            {genBusy[`step${i}`] ? "生成中…" : "🔄 重新生成"}
+                          <div style={{ display: "flex", gap: 10 }}>
+                            <div className="gentext" onClick={() => genOne("step", i + 1, `step${i}`, `步骤 ${i + 1}`, true)}>
+                              {genBusy[`step${i}`] ? "生成中…" : "重新生成"}
+                            </div>
+                            <div className="gentext" onClick={() => deleteStepIllust(i + 1, `step${i}`)}>
+                              删除
+                            </div>
                           </div>
                         )}
                       </>

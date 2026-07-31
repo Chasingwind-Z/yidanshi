@@ -75,15 +75,15 @@ def _protein_per_serving(r: dict) -> float | None:
     return c["protein_g"] / max(1, r.get("servings") or 1)
 
 
-def _rules_daily(day: str | None = None) -> dict:
+def _rules_daily(day: str | None = None, owner_openid: str | None = None) -> dict:
     today = _safe_date(day) or date.today()
     day = today.isoformat()
-    recipes = storage.list_recipes()
+    recipes = storage.list_recipes(owner_openid)
     if len(recipes) < MIN_RECIPES:
         return {"suggestions": [], "date": day}
 
     # 食历按（日期, id）倒序——与 /api/meals 同口径；日期强转字符串防脏数据崩排序
-    meals = sorted(storage.list_meals(),
+    meals = sorted(storage.list_meals(owner_openid),
                    key=lambda m: (str(m.get("date", "")), str(m.get("id", ""))), reverse=True)
     by_id = {r["id"]: r for r in recipes}
 
@@ -136,7 +136,7 @@ def _rules_daily(day: str | None = None) -> dict:
         if room >= KCAL_MIN_ROOM:
             kcal_room = room
 
-    pantry = (storage.read_doc("pantry") or {}).get("items", [])
+    pantry = (storage.read_doc(storage.doc_name("pantry", owner_openid)) or {}).get("items", [])
     workday = today.weekday() < 5
     eaten_today = {m.get("recipe_id") for m in today_meals}
 
@@ -216,7 +216,7 @@ _ai_fail_at = 0.0  # 上次 AI 真调失败的时刻（time.monotonic），配�
 
 
 def _build_facts(today: date, day: str, recipes: list[dict], meals: list[dict],
-                 by_id: dict, today_meals: list[dict]) -> dict:
+                 by_id: dict, today_meals: list[dict], owner_openid: str | None = None) -> dict:
     """组喂给 AI 的 compact 事实 JSON。全部复用现有函数/口径，不另起炉灶重算。"""
     # 每道菜最近一次做的日期 + 做过次数（脏日期跳过，与规则版口径一致）
     last_made: dict[str, date] = {}
@@ -268,7 +268,8 @@ def _build_facts(today: date, day: str, recipes: list[dict], meals: list[dict],
     return {"date": day,
             "weekday": "星期" + "一二三四五六日"[today.weekday()],
             "goal_kcal": goal_kcal,
-            "pantry": ((storage.read_doc("pantry") or {}).get("items", []))[:FACTS_PANTRY_MAX],
+            "pantry": ((storage.read_doc(storage.doc_name("pantry", owner_openid)) or {})
+                      .get("items", []))[:FACTS_PANTRY_MAX],
             "today_eaten": [{"id": m["recipe_id"], "name": meal_name(m)}
                             for m in today_meals if m.get("recipe_id")],
             "recent_meals": recent,
@@ -300,16 +301,16 @@ def _parse_ai(out: str, by_id: dict, eaten_today: frozenset, day: str) -> dict |
     return {"suggestions": picks, "date": day, "source": "ai"}
 
 
-def _ai_daily(day: str | None) -> dict | None:
+def _ai_daily(day: str | None, owner_openid: str | None = None) -> dict | None:
     """AI 路径：通道可用才组事实真调。返回 None 表示这条路走不通，由 daily() 落回规则版。"""
     if not llm.backend_status()["available"]:
         return None
     today = _safe_date(day) or date.today()
     day = today.isoformat()
-    recipes = storage.list_recipes()
+    recipes = storage.list_recipes(owner_openid)
     if len(recipes) < MIN_RECIPES:
         return None  # 食单太小不荐——与规则版同一门槛，由规则版统一返回空 suggestions
-    meals = sorted(storage.list_meals(),
+    meals = sorted(storage.list_meals(owner_openid),
                    key=lambda m: (str(m.get("date", "")), str(m.get("id", ""))), reverse=True)
     by_id = {r["id"]: r for r in recipes}
     today_meals = [m for m in meals if str(m.get("date", "")) == day]
@@ -323,7 +324,7 @@ def _ai_daily(day: str | None) -> dict | None:
         if time.monotonic() - _ai_fail_at < AI_FAIL_COOLDOWN:
             return None  # 刚挂过，冷却期内不再撞，直接规则版
         try:
-            facts = _build_facts(today, day, recipes, meals, by_id, today_meals)
+            facts = _build_facts(today, day, recipes, meals, by_id, today_meals, owner_openid)
             out = llm.ask(_AI_PROMPT.replace("{facts_json}",
                                              json.dumps(facts, ensure_ascii=False, separators=(",", ":"))),
                           timeout=AI_TIMEOUT, json_mode=True)
@@ -337,24 +338,27 @@ def _ai_daily(day: str | None) -> dict | None:
         return result
 
 
-def daily(day: str | None = None) -> dict:
-    """每日荐入口：AI 出建议，规则版保底。签名与返回结构不变（app.py 零改动）。
+def daily(day: str | None = None, owner_openid: str | None = None, allow_ai: bool = True) -> dict:
+    """每日荐入口：AI 出建议，规则版保底。
 
     AI 任何一步失败（不可用/异常/超时/JSON 不合法/校验不过）都静默落回规则版——
-    永不因 AI 挂而 500。source 字段标记来源："ai" / "rules"。"""
+    永不因 AI 挂而 500。source 字段标记来源："ai" / "rules"。allow_ai=False（多租户下
+    非主人厨房）直接跳过 AI 路径——BYOK 还没接（M2），AI 通道读的是主人自己的全局配置，
+    别的厨房调了也是白花主人的钱，不如干脆不给调，走规则版（零成本，功能仍完整）。"""
     # 进度钩子：食单不满 MIN_RECIPES 时不是沉默的空，而是告诉前端还差几道
     #（「再记 N 道菜，管家就开始替你参谋」）。锁定分支在最前，缓存/AI 路径全不碰。
-    n = len(storage.list_recipes())
+    n = len(storage.list_recipes(owner_openid))
     if n < MIN_RECIPES:
         today = _safe_date(day) or date.today()
         return {"suggestions": [], "locked": {"need": MIN_RECIPES - n},
                 "date": today.isoformat(), "source": "rules"}
-    try:
-        result = _ai_daily(day)
-        if result is not None:
-            return result
-    except Exception:
-        pass  # AI 挂了不声张，规则版兜底
-    result = _rules_daily(day)
+    if allow_ai:
+        try:
+            result = _ai_daily(day, owner_openid)
+            if result is not None:
+                return result
+        except Exception:
+            pass  # AI 挂了不声张，规则版兜底
+    result = _rules_daily(day, owner_openid)
     result["source"] = "rules"
     return result

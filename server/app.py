@@ -50,6 +50,10 @@ OWNER_OPENID = os.environ.get("YIDANSHI_OWNER_OPENID", "").strip()
 _PUBLIC_API = {"/api/guest/menu", "/api/guest/order", "/api/guest/order-status",
                "/api/whoami"}  # 开令牌后仍对访客开放的接口
 
+# 多租户（M1，见 docs/multi-tenant-design.md）：默认关闭，行为跟历史版本逐字节一致。
+# 开了这个开关才走 identity_gate（下方），本地自托管 web / 未切换的生产环境完全不受影响。
+MULTI_TENANT = os.environ.get("YIDANSHI_MULTI_TENANT", "").strip() == "1"
+
 # 抠图上传短时令牌：callContainer 官方文档写明「文本请求限 100KiB」，真机实测哪怕把照片
 # 压到几十 KB 依然报 -606001——问题不在体积，是这条通道压根不适合传文件（官方也明确说
 # 不建议）。改回真正扛得住大文件的 wx.uploadFile 直连域名，但那条路拿不到 X-WX-OPENID，
@@ -59,24 +63,32 @@ def _cutout_token_secret() -> str:
     return OWNER_TOKEN or OWNER_OPENID  # 只有两者之一非空时这条令牌路径才会被启用
 
 
-def _mint_cutout_token(ttl: int = 180) -> str:
+def _mint_cutout_token(openid: str = "", ttl: int = 180) -> str:
+    # openid 嵌进签名里（多租户下需要知道这次上传该记到哪个厨房的配额；单租户下恒为空串，
+    # 跟历史版本行为一致——payload 多一段不影响单租户路径的校验逻辑）
     expiry = str(int(time.time()) + ttl)
-    sig = hmac.new(_cutout_token_secret().encode(), expiry.encode(), hashlib.sha256).hexdigest()[:24]
-    return f"{expiry}.{sig}"
+    payload = f"{expiry}.{openid}"
+    sig = hmac.new(_cutout_token_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()[:24]
+    return f"{payload}.{sig}"
 
 
-def _check_cutout_token(token: str) -> bool:
-    expiry_s, _, sig = token.partition(".")
-    if not expiry_s.isdigit() or not sig:
-        return False
-    if time.time() > int(expiry_s):
-        return False
-    expected = hmac.new(_cutout_token_secret().encode(), expiry_s.encode(), hashlib.sha256).hexdigest()[:24]
-    return hmac.compare_digest(sig, expected)
+def _check_cutout_token(token: str) -> tuple[bool, str]:
+    """返回 (是否有效, 令牌里带的 openid)；单租户下 openid 恒为空串。"""
+    parts = token.split(".", 2)
+    if len(parts) != 3:
+        return False, ""
+    expiry_s, openid, sig = parts
+    if not expiry_s.isdigit() or time.time() > int(expiry_s):
+        return False, ""
+    expected = hmac.new(_cutout_token_secret().encode(), f"{expiry_s}.{openid}".encode(),
+                        hashlib.sha256).hexdigest()[:24]
+    return hmac.compare_digest(sig, expected), openid
 
 
 @app.middleware("http")
 async def owner_gate(request: Request, call_next):
+    if MULTI_TENANT:
+        return await identity_gate(request, call_next)
     if (OWNER_TOKEN or OWNER_OPENID) and request.method != "OPTIONS":  # 放行 CORS 预检
         p = request.url.path
         if p.startswith("/api/") and p not in _PUBLIC_API:
@@ -95,7 +107,7 @@ async def owner_gate(request: Request, call_next):
             # 抠图 wx.uploadFile 直连域名拿不到 openid，认一次性签名令牌（见 _mint_cutout_token）
             if not ok and p == "/api/cutout" and _cutout_token_secret():
                 ut = request.query_params.get("upload_token", "")
-                ok = bool(ut) and _check_cutout_token(ut)
+                ok = bool(ut) and _check_cutout_token(ut)[0]
             if not ok and OWNER_TOKEN:  # 原有口令逻辑原样保留
                 supplied = (request.headers.get("x-token")
                             or request.cookies.get("yidanshi_token")
@@ -111,6 +123,50 @@ async def owner_gate(request: Request, call_next):
     return await call_next(request)
 
 
+async def identity_gate(request: Request, call_next):
+    """多租户身份中间件（YIDANSHI_MULTI_TENANT=1 时启用）：不再有"主人"概念，只有
+    "你是谁的厨房"。X-WX-OPENID 是唯一身份来源（callContainer 自动注入），首次出现
+    自动开通厨房——零注册，跟单租户版 owner_gate 完全独立，避免两套语义纠缠。"""
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    p = request.url.path
+    if p.startswith("/api/") and p not in _PUBLIC_API:
+        ok = False
+        owner_openid = ""
+        # 晒图接口：跟单租户版一样走 guest token 的 query 通道，只是 token 现在按厨房查
+        if p == "/api/menuposter" or p.startswith(("/api/recipecard/", "/api/monthcard/")):
+            t = request.query_params.get("t", "")
+            if t:
+                try:
+                    kitchen = storage.get_kitchen_by_guest_token(t)
+                except Exception:  # noqa: BLE001 —— 存储抖动别把鉴权打成 500，回落身份鉴权
+                    kitchen = None
+                if kitchen is not None:
+                    ok, owner_openid = True, kitchen["openid"]
+        # 抠图上传令牌：openid 嵌在令牌里（见 _mint_cutout_token），校验通过直接拿到是谁的厨房
+        if not ok and p == "/api/cutout":
+            ut = request.query_params.get("upload_token", "")
+            if ut:
+                valid, tok_openid = _check_cutout_token(ut)
+                if valid:
+                    ok, owner_openid = True, tok_openid
+        if not ok:
+            header_openid = request.headers.get("x-wx-openid", "")
+            if not header_openid:
+                # h5/网页请求没有这个头（只有 callContainer 才会注入）——多租户下管理接口不对
+                # 网页开放，跟单租户版"web 靠主人令牌"是两条不同的路，这里干脆直接拒
+                return JSONResponse({"detail": "需要微信身份"}, status_code=401)
+            ok, owner_openid = True, header_openid
+        if ok and owner_openid:
+            if storage.get_kitchen(owner_openid) is None:
+                import secrets as _secrets
+                storage.upsert_kitchen(
+                    owner_openid, name="新厨房", created=date.today().isoformat(),
+                    guest_token=_secrets.token_urlsafe(8), cutout_count=0, photo_count=0)
+            request.state.owner_openid = owner_openid
+    return await call_next(request)
+
+
 # CORS 必须在 owner_gate **之后**注册，才能成为最外层中间件（Starlette 后注册者在外）——
 # 否则 owner_gate 短路返回的 401 拿不到 CORS 头，浏览器把「需要主人令牌」当成不明网络错。
 # 只放行本机来源的浏览器页面读取响应；不改变「谁能调接口」，小程序 callContainer 不受此限。
@@ -119,6 +175,14 @@ app.add_middleware(
     allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"], allow_headers=["*"], allow_credentials=True,
 )
+
+
+def _oid(request: Request) -> str | None:
+    """当前请求所属厨房的 openid；非多租户模式下恒 None（等价于历史版本的无过滤行为）。"""
+    return getattr(request.state, "owner_openid", None)
+
+
+_doc_name = storage.doc_name  # 别名，方便本文件内直接用（注意 "config" 不在这套里，见下方 _require_owner_kitchen 注释）
 
 
 @app.get("/api/whoami")
@@ -165,13 +229,22 @@ def _config_payload() -> dict:
             "secrets": {e: bool(os.environ.get(e)) for e in envs}}
 
 
+def _require_owner_kitchen(request: Request) -> None:
+    """多租户下 AI 配置暂时只有主人厨房能碰——BYOK（各厨房自己的 key）是 M2 才做的事，
+    M1 提前放开只会让其他厨房改了没用（llm.py/imagegen.py 还在读全局配置），不如先锁住。"""
+    if MULTI_TENANT and _oid(request) != OWNER_OPENID:
+        raise HTTPException(403, "AI 配置暂时只有主人能改（多人各自配置钥匙的功能还没上线）")
+
+
 @app.get("/api/config")
-def get_config():
+def get_config(request: Request):
+    _require_owner_kitchen(request)
     return _config_payload()
 
 
 @app.put("/api/config")
-def put_config(body: dict):
+def put_config(body: dict, request: Request):
+    _require_owner_kitchen(request)
     # 读现有配置为基底，只覆盖 body 里出现的段，保留 guest 等未提及的顶层字段
     # （历史 bug：整体重建会静默吞掉 guest token，作废分享链接）
     cfg = storage.read_doc("config") or {}
@@ -256,10 +329,10 @@ def _is_demo(r: dict) -> bool:
 
 
 @app.get("/api/recipes")
-def recipes():
-    stats = storage.recipe_stats()
+def recipes(request: Request):
+    stats = storage.recipe_stats(_oid(request))
     out = []
-    for r in storage.list_recipes():
+    for r in storage.list_recipes(_oid(request)):
         s = stats.get(r["id"], {})
         whole, src = nutrition.effective(r)
         # 显示口径与「收走示例菜」的删除口径对齐：做过 ≥1 次就不再算示例（哪怕内容签名没改过）。
@@ -272,14 +345,14 @@ def recipes():
 
 
 @app.get("/api/recipes/{rid}")
-def recipe(rid: str):
-    r = storage.get_recipe(rid)
+def recipe(rid: str, request: Request):
+    r = storage.get_recipe(rid, _oid(request))
     if r is None:
         raise HTTPException(404, "no such recipe")
-    s = storage.recipe_stats().get(rid, {})
+    s = storage.recipe_stats(_oid(request)).get(rid, {})
     # 朱批：这道菜历次记录的备注，红批注上教程卡
     notes = [{"date": m["date"], "note": m["note"]}
-             for m in storage.list_meals() if m["recipe_id"] == rid and m.get("note")]
+             for m in storage.list_meals(_oid(request)) if m["recipe_id"] == rid and m.get("note")]
     whole, src = nutrition.effective(r)
     return {**r, "times": s.get("times", 0), "rating": s.get("rating"),
             "nutrition": nutrition.compute(r["ingredients"]),
@@ -332,17 +405,22 @@ def _clean_recipe(r: dict) -> dict:
 
 
 @app.post("/api/recipes")
-def create_recipe(body: dict):
+def create_recipe(body: dict, request: Request):
     if not str(body.get("name", "")).strip():
         raise HTTPException(400, "菜名不能为空")
     body.pop("id", None)  # 建菜一律按菜名生成新 slug，忽略客户端传入 id（防覆盖/越目录写）
-    r = storage.save_recipe(_clean_recipe(body))
-    return storage.get_recipe(r["id"]) or r
+    oid = _oid(request)
+    try:
+        r = storage.save_recipe(_clean_recipe(body), oid)
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    return storage.get_recipe(r["id"], oid) or r
 
 
 @app.put("/api/recipes/{rid}")
-def update_recipe(rid: str, body: dict):
-    old = storage.get_recipe(rid)
+def update_recipe(rid: str, body: dict, request: Request):
+    oid = _oid(request)
+    old = storage.get_recipe(rid, oid)
     if old is None:
         raise HTTPException(404, "菜谱不存在")
     if not storage._ID_RE.fullmatch(rid):
@@ -355,42 +433,45 @@ def update_recipe(rid: str, body: dict):
               **body}  # body 带的字段覆盖（含显式清空为 null）；没带的沿用旧值
     merged["id"] = rid
     try:
-        storage.save_recipe(_clean_recipe(merged))
+        storage.save_recipe(_clean_recipe(merged), oid)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return storage.get_recipe(rid)  # 回落库后重新解析的结果，别回内存里的 merged（口径才一致）
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    return storage.get_recipe(rid, oid)  # 回落库后重新解析的结果，别回内存里的 merged（口径才一致）
 
 
-def _pantry() -> list[str]:
-    return (storage.read_doc("pantry") or {}).get("items", [])
+def _pantry(owner_openid: str | None = None) -> list[str]:
+    return (storage.read_doc(_doc_name("pantry", owner_openid)) or {}).get("items", [])
 
 
 @app.get("/api/pantry")
-def get_pantry():
-    return {"items": _pantry()}
+def get_pantry(request: Request):
+    return {"items": _pantry(_oid(request))}
 
 
 @app.put("/api/pantry")
-def put_pantry(body: dict):
+def put_pantry(body: dict, request: Request):
     seen, items = set(), []
     for it in body.get("items", []):
         it = str(it).strip()
         if it and it not in seen:
             seen.add(it)
             items.append(it)
-    storage.write_doc("pantry", {"items": items})
+    storage.write_doc(_doc_name("pantry", _oid(request)), {"items": items})
     return {"items": items}
 
 
 @app.get("/api/random")
-def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: int = 0,
+def random_pick(request: Request, category: str | None = None, avoid_days: int = 0, max_minutes: int = 0,
                 difficulty: str = "", use_pantry: int = 0, exclude: str = ""):
     """翻牌子：avoid_days=N 排除最近 N 天做过的；max_minutes=M 只要 M 分钟内能做的；
     difficulty=简单 只要省事的；use_pantry=1 优先冰箱里有食材的菜。
     exclude=id1,id2 划掉重抽（用户明说不想吃的，硬排除不放宽）。
     条件内没菜时逐级放宽并带 relaxed 标记，绝不空手而归——唯 exclude 例外：
     全被划掉时如实说翻完了，别把人家刚划掉的又端回去。"""
-    rs = [r for r in storage.list_recipes() if category in (None, "", r["category"])]
+    oid = _oid(request)
+    rs = [r for r in storage.list_recipes(oid) if category in (None, "", r["category"])]
     if not rs:
         raise HTTPException(404, "菜单还是空的")
     skipped = {s.strip() for s in exclude.split(",") if s.strip()}
@@ -403,7 +484,7 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
         cutoff = (date.today() - timedelta(days=avoid_days)).isoformat()
         today = date.today().isoformat()
         # 同样要上界：一条误填成 2027 年的记录会让这道菜「永远算刚吃过」，再也翻不到牌
-        recent = {m["recipe_id"] for m in storage.list_meals()
+        recent = {m["recipe_id"] for m in storage.list_meals(oid)
                   if cutoff <= str(m.get("date", "")) <= today}
         fresh = [r for r in rs if r["id"] not in recent]
         rs, relaxed = (fresh, relaxed) if fresh else (rs, True)
@@ -414,7 +495,7 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
         easy = [r for r in rs if r.get("difficulty") == difficulty]
         rs, relaxed = (easy, relaxed) if easy else (rs, True)
     if use_pantry:
-        pantry = _pantry()
+        pantry = _pantry(oid)
         def score(r: dict) -> int:
             return sum(1 for ing in r["ingredients"]
                        if any(it in ing["name"] or ing["name"] in it for it in pantry))
@@ -428,10 +509,12 @@ def random_pick(category: str | None = None, avoid_days: int = 0, max_minutes: i
 
 
 @app.get("/api/suggest")
-def daily_suggest():
-    """每日荐：规则版（零成本零延迟），从自己的食单里挑今天适合做的 1-2 道。
-    规则与权重见 server/suggest.py；主人接口（客人 401，前端静默不渲染）。"""
-    return suggest.daily()
+def daily_suggest(request: Request):
+    """每日荐：规则版（零成本零延迟）+ AI 版（有通道才用），从自己的食单里挑今天适合
+    做的 1-2 道。规则与权重见 server/suggest.py；主人接口（客人 401，前端静默不渲染）。
+    多租户下 AI 通道暂时只对主人厨房开放（见 suggest.daily 的 allow_ai 注释）。"""
+    oid = _oid(request)
+    return suggest.daily(owner_openid=oid, allow_ai=not MULTI_TENANT or oid == OWNER_OPENID)
 
 
 @app.post("/api/nutrition/preview")
@@ -479,21 +562,25 @@ def ingredient_info(name: str):
 # ---------- 抠图 ----------
 
 @app.post("/api/cutout-token")
-def cutout_token():
+def cutout_token(request: Request):
     """给「wx.uploadFile 直连域名传抠图」换一个几分钟内有效的签名令牌——这一步是小请求，
     走 callContainer 正常拿 openid 鉴权；令牌拿到后再走 /api/cutout?upload_token=…，
-    那条大文件上传路径本身不认 openid（callContainer 传不了大文件，见 owner_gate 里的注释）。"""
-    return {"token": _mint_cutout_token()}
+    那条大文件上传路径本身不认 openid（callContainer 传不了大文件，见 owner_gate 里的注释）。
+    多租户下把当前厨房的 openid 嵌进令牌里，好让后面的上传知道该记到谁的抠图配额。"""
+    return {"token": _mint_cutout_token(getattr(request.state, "owner_openid", ""))}
 
 
 @app.post("/api/cutout")
-async def do_cutout(photo: UploadFile = File(...), already_cut: bool = Form(False),
+async def do_cutout(request: Request, photo: UploadFile = File(...), already_cut: bool = Form(False),
                     mode: str = Form("auto"), cx: float = Form(-1), cy: float = Form(-1), r: float = Form(-1)):
     """mode: plate=抠出食物摆插画盘 / auto=AI抠图直出 / circle=参考圆直裁 / both=全都出让用户选 /
     polish=AI 图生图精修原照片；cx/cy/r 为参考圆相对坐标。
 
     抠图降级链：本地 rembg（birefnet）→（配了阿里云凭证时）segfood 抠出主体走同样的
     摆盘合成 → 圆框直裁（响应加 note 说明）。云端镜像本就无 rembg，行为不变。"""
+    openid = getattr(request.state, "owner_openid", None)
+    if MULTI_TENANT and openid and storage.bump_cutout_count(openid) > 5:
+        raise HTTPException(429, "今日抠图次数用完了，明天再来（每个厨房每天 5 张）")
     raw = await photo.read()
     stamp = datetime.now().strftime("p%Y%m%d%H%M%S%f")
     ext = Path(photo.filename or "x.jpg").suffix or ".jpg"
@@ -604,10 +691,10 @@ def _run_illustrate_job(job_id: str, r: dict, kind: str, index: int) -> None:
 
 
 @app.post("/api/ai/illustrate-start")
-def ai_illustrate_start(body: dict):
+def ai_illustrate_start(body: dict, request: Request):
     """提交一张插画生成任务：{recipe_id, kind: "ing"|"step", index(从1起)} → {job_id}。
     立刻返回（不等生图完成），真正的生成在后台线程跑，前端拿 job_id 轮询 -status。"""
-    r = storage.get_recipe(body.get("recipe_id", ""))
+    r = storage.get_recipe(body.get("recipe_id", ""), _oid(request))
     if r is None:
         raise HTTPException(404, "no such recipe")
     kind, index = body.get("kind"), int(body.get("index", 0))
@@ -629,6 +716,19 @@ def ai_illustrate_status(job_id: str):
     if job is None:
         raise HTTPException(404, "没有这个任务（可能已经过期，重新生成一次）")
     return {"status": job["status"], "url": job["url"], "error": job["error"]}
+
+
+@app.delete("/api/recipes/{rid}/illust/step/{index}")
+def ai_illustrate_delete(rid: str, index: int, request: Request):
+    """只删步骤插画——食材图标是全食单共享库，删了会连带影响其他用到同名食材的菜，
+    不开放删除入口；步骤图是每道菜自己的，删了没有副作用。"""
+    r = storage.get_recipe(rid, _oid(request))
+    if r is None:
+        raise HTTPException(404, "no such recipe")
+    if not 1 <= index <= len(r["steps"]):
+        raise HTTPException(400, "bad index")
+    photostore.delete(f"illust/{rid}", f"step-{index}.png")
+    return {"ok": True}
 
 
 @app.post("/api/ai/extract")
@@ -713,16 +813,17 @@ def _clean_date(v) -> str:
 
 
 @app.post("/api/meals")
-def add_meal(body: dict):
+def add_meal(body: dict, request: Request):
+    oid = _oid(request)
     rid = body.get("recipe_id")
     if not rid and body.get("new_recipe", {}).get("name"):
-        rid = storage.save_recipe(body["new_recipe"])["id"]
-    if not rid or storage.get_recipe(rid) is None:
+        rid = storage.save_recipe(body["new_recipe"], oid)["id"]
+    if not rid or storage.get_recipe(rid, oid) is None:
         raise HTTPException(400, "先选一道菜，或给新菜起个名字")
     rating = _clean_rating(body.get("rating"))
     mdate = _clean_date(body.get("date"))
 
-    r = storage.get_recipe(rid)
+    r = storage.get_recipe(rid, oid)
     # photo_id 直接拼进路径，必须是干净 id（否则 ../ 之类脏值会永久留在 meals.json 里）
     pid = str(body.get("photo_id", "")).strip()
     if pid and not storage.valid_id(pid.lower()):
@@ -736,18 +837,19 @@ def add_meal(body: dict):
         "photo_card": card,
         # 快照当次每餐热量：日后菜谱被编辑，历史食历不被追溯篡改
         "kcal": nutrition.per_serving_kcal(r),
-    })
+    }, oid)
     if card and not r["cover"]:
-        storage.set_cover(rid, card)
+        storage.set_cover(rid, card, oid)
     return meal
 
 
 @app.get("/api/meals")
-def meals():
-    rs = {r["id"]: r for r in storage.list_recipes()}
+def meals(request: Request):
+    oid = _oid(request)
+    rs = {r["id"]: r for r in storage.list_recipes(oid)}
     live = {rid: nutrition.per_serving_kcal(r) for rid, r in rs.items()}
     out = []
-    for m in storage.list_meals():
+    for m in storage.list_meals(oid):
         # 快照优先；老记录（无快照）回退现算，行为向后兼容
         kcal = m.get("kcal")
         if kcal is None:
@@ -761,18 +863,22 @@ def meals():
 
 
 @app.delete("/api/recipes/{rid}")
-def delete_recipe(rid: str):
+def delete_recipe(rid: str, request: Request):
     """删除菜谱文件；食历记录保留（靠菜名快照继续可读），照片不删。"""
-    if not storage.delete_recipe(rid):
+    if not storage.delete_recipe(rid, _oid(request)):
         raise HTTPException(404, "没有这道菜")
     return {"ok": True}
 
 
 # ---------- 点菜（亲友只读链接） ----------
 
-def _notify_owner(order: dict) -> None:
+def _notify_owner(order: dict, owner_openid: str | None = None) -> None:
     """有人点菜 → 给主人微信推一条（Server酱 sctapi）。没配 SERVERCHAN_SENDKEY 就静默不做；
-    在后台线程发、失败也静默——提醒是锦上添花，绝不能挡点单落库或拖慢响应。"""
+    在后台线程发、失败也静默——提醒是锦上添花，绝不能挡点单落库或拖慢响应。
+    多租户下每个厨房自己的提醒 key 是 M2 才做的事（kitchens.serverchan_key 加密读写还没接），
+    M1 先只对主人自己的厨房生效，其他厨房没配 key 就没提醒——跟"没 key 就降级"一贯做法一致。"""
+    if owner_openid and owner_openid != OWNER_OPENID:
+        return
     key = os.environ.get("SERVERCHAN_SENDKEY", "").strip()
     if not key:
         return
@@ -794,11 +900,23 @@ def _notify_owner(order: dict) -> None:
     threading.Thread(target=_send, daemon=True).start()
 
 
-def _orders() -> list[dict]:
-    return storage.read_doc("orders") or []
+def _orders(owner_openid: str | None = None) -> list[dict]:
+    return storage.read_doc(_doc_name("orders", owner_openid)) or []
 
 
-def _guest_token(create: bool = False, reset: bool = False) -> str:
+def _guest_token(create: bool = False, reset: bool = False, request: Request | None = None) -> str:
+    """单租户：口令挂在全局 config.guest.token（历史行为，不变）。
+    多租户（request 非 None）：口令挂在当前厨房的 kitchens.guest_token。"""
+    if MULTI_TENANT and request is not None:
+        oid = _oid(request)
+        if not oid:
+            return ""
+        tok = (storage.get_kitchen(oid) or {}).get("guest_token", "")
+        if reset or (create and not tok):
+            import secrets as _secrets
+            tok = _secrets.token_urlsafe(8)
+            storage.upsert_kitchen(oid, guest_token=tok)
+        return tok
     cfg = storage.read_doc("config") or {}
     tok = cfg.get("guest", {}).get("token", "")
     if reset or (create and not tok):
@@ -810,26 +928,36 @@ def _guest_token(create: bool = False, reset: bool = False) -> str:
     return tok
 
 
-def _check_guest(t: str) -> None:
-    if not t or t != _guest_token():
+def _check_guest(t: str) -> str | None:
+    """校验点菜口令。多租户下返回这个口令所属厨房的 openid（后续查询按它过滤菜单/点单）；
+    单租户下返回 None（不需要过滤，跟历史行为一致——只有一间"厨房"）。"""
+    if not t:
         raise HTTPException(403, "点菜链接无效，找主人要一个新的吧")
+    if MULTI_TENANT:
+        kitchen = storage.get_kitchen_by_guest_token(t)
+        if kitchen is None:
+            raise HTTPException(403, "点菜链接无效，找主人要一个新的吧")
+        return kitchen["openid"]
+    if t != _guest_token():
+        raise HTTPException(403, "点菜链接无效，找主人要一个新的吧")
+    return None
 
 
 @app.post("/api/guest-link")
-def guest_link(reset: bool = False):
-    return {"token": _guest_token(create=True, reset=reset)}
+def guest_link(request: Request, reset: bool = False):
+    return {"token": _guest_token(create=True, reset=reset, request=request)}
 
 
 @app.get("/api/guest/menu")
 def guest_menu(t: str):
-    _check_guest(t)
-    stats = storage.recipe_stats()
+    oid = _check_guest(t)
+    stats = storage.recipe_stats(oid)
     # servings 也要给：kcal 这里是「每餐」值，访客拿不到 servings 就没法标「/餐」，
     # 会把 907 读成整道菜的热量（主人页有 servings 所以标了 /餐，两边口径别打架）
     out = [{k: r.get(k) for k in ("id", "name", "category", "cover", "minutes", "servings")}
            | {"times": stats.get(r["id"], {}).get("times", 0), "rating": stats.get(r["id"], {}).get("rating"),
               "kcal": nutrition.per_serving_kcal(r)}
-           for r in storage.list_recipes()]
+           for r in storage.list_recipes(oid)]
     return {"categories": storage.DEFAULT_CATEGORIES, "recipes": out}
 
 
@@ -844,7 +972,7 @@ _idem_lock = threading.Lock()
 @app.post("/api/guest/order")
 def guest_order(body: dict):
     t = str(body.get("t", ""))
-    _check_guest(t)
+    oid = _check_guest(t)
     client_id = str(body.get("client_id") or "").strip()[:64]
     if client_id:  # 旧客户端不带 client_id：行为与从前完全一致
         with _idem_lock:
@@ -854,7 +982,7 @@ def guest_order(body: dict):
     raw = body.get("items", [])
     if not isinstance(raw, list):
         raise HTTPException(400, "点单格式不对")
-    names = {r["id"]: r["name"] for r in storage.list_recipes()}
+    names = {r["id"]: r["name"] for r in storage.list_recipes(oid)}
     accepted, dropped = [], []
     for it in raw:  # 兼容两种格式：旧=菜 id 字符串；新={id, note}（每道菜可备注：少放辣…）
         rid, note = (it, "") if isinstance(it, str) else (str(it.get("id", "")), str(it.get("note", ""))) \
@@ -883,13 +1011,13 @@ def guest_order(body: dict):
     if not accepted:
         # 点的菜全被收回：200 + ok:false 如实相告，不落库（请求本身没错，不该 400）
         return _remember({"ok": False, "id": None, "accepted": [], "dropped": dropped})
-    orders = _orders()
+    orders = _orders(oid)
     orders.append({"id": f"o{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
                    "from": str(body.get("from", "")).strip()[:20] or "神秘食客",
                    "note": str(body.get("note", "")).strip()[:200],
                    "items": accepted, "date": date.today().isoformat(), "done": False})
-    storage.write_doc("orders", orders)
-    _notify_owner(orders[-1])
+    storage.write_doc(_doc_name("orders", oid), orders)
+    _notify_owner(orders[-1], oid)
     # 旧客户端只看 ok；id/accepted/dropped 是新增字段（只增不减）：id=落库单的 id
     #（客人凭它查 /api/guest/order-status），前端成功态按回执渲染
     return _remember({"ok": True, "id": orders[-1]["id"], "accepted": accepted, "dropped": dropped})
@@ -899,22 +1027,23 @@ def guest_order(body: dict):
 def guest_order_status(t: str, ids: str = ""):
     """客人回执：凭点菜口令查自己单子的状态（id 客人点单时已拿到，内容本地有——
     只回状态不回单内容，不多泄）。查无的单静默跳过；一次最多 20 个防滥用。"""
-    _check_guest(t)
+    owner = _check_guest(t)
     want = list(dict.fromkeys(s.strip() for s in ids.split(",") if s.strip()))[:20]
-    by_id = {o.get("id"): o for o in _orders()}
+    by_id = {o.get("id"): o for o in _orders(owner)}
     return {"orders": [{"id": oid, "done": bool(o.get("done")),
                         "done_date": o.get("done_date")}
                        for oid in want if (o := by_id.get(oid)) is not None]}
 
 
 @app.get("/api/orders")
-def list_orders():
-    return sorted(_orders(), key=lambda o: o["id"], reverse=True)
+def list_orders(request: Request):
+    return sorted(_orders(_oid(request)), key=lambda o: o["id"], reverse=True)
 
 
 @app.put("/api/orders/{oid}")
-def update_order(oid: str, body: dict):
-    orders = _orders()
+def update_order(oid: str, body: dict, request: Request):
+    owner = _oid(request)
+    orders = _orders(owner)
     for o in orders:
         if o["id"] == oid:
             o["done"] = bool(body.get("done", True))
@@ -924,7 +1053,7 @@ def update_order(oid: str, body: dict):
                 o.setdefault("done_date", date.today().isoformat())
             else:
                 o.pop("done_date", None)  # 取消完成 → 完成日一并撤掉
-            storage.write_doc("orders", orders)
+            storage.write_doc(_doc_name("orders", owner), orders)
             return o
     raise HTTPException(404, "没有这单")
 
@@ -932,12 +1061,12 @@ def update_order(oid: str, body: dict):
 # ---------- 买菜清单 ----------
 
 @app.get("/api/shopping")
-def get_shopping():
-    return storage.read_doc("shopping") or {"items": []}
+def get_shopping(request: Request):
+    return storage.read_doc(_doc_name("shopping", _oid(request))) or {"items": []}
 
 
 @app.put("/api/shopping")
-def put_shopping(body: dict):
+def put_shopping(body: dict, request: Request):
     # 服务端按 name 合并去重（前端 mergeShopping 已合并；这里兜底防绕过前端直调 API 膨胀）
     merged: dict[str, dict] = {}
     for it in body.get("items", []):
@@ -959,25 +1088,26 @@ def put_shopping(body: dict):
             e["checked"] = e["checked"] or bool(it.get("checked"))
     items = sorted(merged.values(), key=lambda x: x["seasoning"])
     doc = {"items": items}
-    storage.write_doc("shopping", doc)
+    storage.write_doc(_doc_name("shopping", _oid(request)), doc)
     return doc
 
 
 @app.get("/api/weekreport")
-def weekreport():
+def weekreport(request: Request):
     """行为周报：做饭行为报告（规则版零 AI）——回答「这周我把日子过起来了吗」，
     不再是营养审计；营养降为一行附注 nutri_note。空周只给一句话（empty + line）。"""
     from collections import Counter
 
+    oid = _oid(request)
     monday = date.today() - timedelta(days=date.today().weekday())
     mon_iso = monday.isoformat()
     # 上界不能省：日期填成 2027 年的记录会永久混进「本周」（字符串比较 "2027-.." >= 本周一恒真）
     next_monday = (monday + timedelta(days=7)).isoformat()
     prev_monday = (monday - timedelta(days=7)).isoformat()
-    all_meals = storage.list_meals()
+    all_meals = storage.list_meals(oid)
     meals = [m for m in all_meals if mon_iso <= str(m.get("date", "")) < next_monday]
     last_meals = [m for m in all_meals if prev_monday <= str(m.get("date", "")) < mon_iso]
-    recipes = {r["id"]: r for r in storage.list_recipes()}
+    recipes = {r["id"]: r for r in storage.list_recipes(oid)}
 
     def _mname(m: dict) -> str:
         # 菜名口径：记餐时的快照优先（菜谱日后被删/改名不影响历史），再查菜谱，再退 id
@@ -1023,7 +1153,7 @@ def weekreport():
         wk -= timedelta(days=7)
 
     # 本周做掉的家人点单：done_date 落在本周（P0-2 起写入；旧单无此字段 → 自然不计）
-    done_orders = [o for o in _orders()
+    done_orders = [o for o in _orders(oid)
                    if o.get("done") and mon_iso <= str(o.get("done_date", "")) < next_monday]
     froms = list(dict.fromkeys(str(o.get("from") or "神秘食客") for o in done_orders))
     orders_done = {"count": len(done_orders), "froms": froms} if done_orders else None
@@ -1116,7 +1246,7 @@ def recipe_card(rid: str, style: str = "photo"):
 
 
 @app.put("/api/meals/{mid}")
-def update_meal(mid: str, body: dict):
+def update_meal(mid: str, body: dict, request: Request):
     # 与 POST 用同一套校验：改记录曾是无校验直写入口，清空日期就能把非法值落库，
     # 之后 /api/meals 按 date 排序会崩 500，食历页永久转圈（第3轮 agent 实测）
     patch = dict(body)
@@ -1128,43 +1258,45 @@ def update_meal(mid: str, body: dict):
         patch["rating"] = _clean_rating(patch["rating"])
     if "note" in patch:
         patch["note"] = str(patch["note"])[:500]
-    m = storage.update_meal(mid, patch)
+    m = storage.update_meal(mid, patch, _oid(request))
     if m is None:
         raise HTTPException(404, "没有这条记录")
     return m
 
 
 @app.delete("/api/meals/{mid}")
-def delete_meal(mid: str):
-    if not storage.delete_meal(mid):
+def delete_meal(mid: str, request: Request):
+    if not storage.delete_meal(mid, _oid(request)):
         raise HTTPException(404, "没有这条记录")
     return {"ok": True}
 
 
 @app.post("/api/seed-examples")
-def seed_examples():
+def seed_examples(request: Request):
     """把 examples/recipes/ 灌进菜谱库（幂等），给新用户十秒看到完整形态。
     文件模式=原样拷贝文件（字节不动，现状）；DB 模式=解析后插入。"""
+    oid = _oid(request)
     src = storage.ROOT / "examples" / "recipes"
     n = 0
     for f in sorted(src.glob("*.md")):
-        if storage.seed_recipe(f):
+        if storage.seed_recipe(f, oid):
             n += 1
     return {"added": n}
 
 
 @app.delete("/api/seed-examples")
-def remove_seed_examples():
+def remove_seed_examples(request: Request):
     """一键收走示例菜：demo 集合内且无任何食历记录关联的删除；记过餐的保留
     （那已经是用户自己的菜了）。照片不删——与 delete_recipe 语义一致。主人接口。"""
-    used = {m.get("recipe_id") for m in storage.list_meals()}
+    oid = _oid(request)
+    used = {m.get("recipe_id") for m in storage.list_meals(oid)}
     removed = kept = 0
-    for r in storage.list_recipes():
+    for r in storage.list_recipes(oid):
         if not _is_demo(r):  # 内容被改过的示例已是用户的菜，绝不收（同 demo 标记口径）
             continue
         if r["id"] in used:
             kept += 1
-        elif storage.delete_recipe(r["id"]):
+        elif storage.delete_recipe(r["id"], oid):
             removed += 1
     return {"removed": removed, "kept": kept}
 

@@ -66,6 +66,20 @@ def save(kind: str, name: str, data: bytes) -> str:
     return _save_local(kind, name, data)
 
 
+def delete(kind: str, name: str) -> None:
+    """删掉一张照片：COS 配了就删 COS 对象；本地模式删本地文件。不存在也不报错。"""
+    conf = _cos_conf()
+    if conf:
+        try:
+            _cos_client(conf).delete_object(Bucket=conf["COS_BUCKET"], Key=f"photos/{kind}/{name}")
+        except Exception:  # noqa: BLE001 —— 删除失败不该挡住前端把它当"没有"处理
+            pass
+        return
+    p = storage.PHOTOS / kind / name
+    if p.exists():
+        p.unlink()
+
+
 def fetch(ref: str, timeout: float = 5) -> bytes | None:
     """按字段值读照片字节：http(s) → urllib 拉取（超时即放弃），/photos/… → 本地文件；
     失败/不存在一律返回 None，调用方自行跳过。"""

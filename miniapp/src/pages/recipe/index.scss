@@ -232,8 +232,9 @@
 .step {
   display: flex;
   gap: 10px;
-  border: 1px solid var(--line-box);
-  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--line-hair);
+  border-radius: 14px;
   padding: 12px;
   margin-bottom: 10px;
 }
@@ -260,7 +261,7 @@
 }
 .stepimg {
   width: 100%;
-  border-radius: 6px;
+  border-radius: 10px;
   margin-top: 8px;
 }
 /* 缺插画时的生成入口：故意做得跟 dimtext 一样轻——这是可选功能，不是内容的一部分，
@@ -271,10 +272,18 @@
   font-size: 12.5px;
   margin-top: 6px;
 }
+.stepactions {
+  display: flex;
+  gap: 10px;
+}
+.stepactions .stepgen {
+  margin-top: 6px;
+}
 
 .tips {
-  border: 1px solid var(--line-box);
-  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--line-hair);
+  border-radius: 14px;
   padding: 12px 14px;
   margin-top: 4px;
 }

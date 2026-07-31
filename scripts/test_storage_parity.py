@@ -140,6 +140,57 @@ def run_sequence() -> None:
     print(f"sqlalchemy_imported={'sqlalchemy' in sys.modules}", file=sys.stderr)
 
 
+# ---------- 子进程：owner_openid 隔离行为（不是 parity 对比——两种模式本来就该不一样）----------
+
+def run_owner_db() -> None:
+    """DB 模式：owner_openid 非空要真过滤；None 时行为跟不传一样（向后兼容）。"""
+    import server.storage as st
+    st.init_dirs()
+    a = st.save_recipe({"name": "厨房A的菜", "ingredients": [], "steps": [], "tips": []}, "kitchen-a")
+    b = st.save_recipe({"name": "厨房B的菜", "ingredients": [], "steps": [], "tips": []}, "kitchen-b")
+    assert [r["id"] for r in st.list_recipes("kitchen-a")] == [a["id"]], "A 不该看到 B 的菜"
+    assert [r["id"] for r in st.list_recipes("kitchen-b")] == [b["id"]], "B 不该看到 A 的菜"
+    assert st.get_recipe(a["id"], "kitchen-b") is None, "B 不该能读到 A 的菜"
+    assert st.get_recipe(a["id"], "kitchen-a") is not None, "A 该能读到自己的菜"
+    assert not st.delete_recipe(a["id"], "kitchen-b"), "B 不该能删 A 的菜"
+    assert st.get_recipe(a["id"]) is not None, "A 的菜被 B 误删了（不该发生）"
+    assert st.delete_recipe(a["id"], "kitchen-a"), "A 该能删自己的菜"
+    ids_all = {r["id"] for r in st.list_recipes()}  # owner_openid=None：不过滤，跟历史行为一致
+    assert b["id"] in ids_all and a["id"] not in ids_all, "不传 owner_openid 时应该看到全部（A 已删）"
+    print("PASS：DB 模式 owner_openid 隔离/兼容行为正确")
+
+
+def run_owner_file() -> None:
+    """文件模式：owner_openid 只是接收不用，传什么都不该改变行为（多租户只在云端跑）。"""
+    import server.storage as st
+    st.init_dirs()
+    r = st.save_recipe({"name": "文件模式的菜", "ingredients": [], "steps": [], "tips": []}, "随便什么值")
+    assert [x["id"] for x in st.list_recipes("另一个值")] == [r["id"]], "文件模式不该按 owner_openid 过滤"
+    assert st.get_recipe(r["id"], "还是随便什么值") is not None, "文件模式不该按 owner_openid 过滤"
+    print("PASS：文件模式 owner_openid 参数正确地被忽略")
+
+
+def check_owner_scoping() -> int:
+    tmp = Path(tempfile.mkdtemp(prefix="yidanshi-owner-"))
+    for mode, extra, fn in (
+        ("db", {"YIDANSHI_DATA_DIR": str(tmp / "dbdata"), "YIDANSHI_DB_URL": f"sqlite:///{tmp / 'owner.db'}"},
+         "--child-owner-db"),
+        ("file", {"YIDANSHI_DATA_DIR": str(tmp / "filedata")}, "--child-owner-file"),
+    ):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("YIDANSHI_DB_URL", "YIDANSHI_DATA_DIR",
+                            "MYSQL_ADDRESS", "MYSQL_USERNAME", "MYSQL_PASSWORD")}
+        env.update(extra)
+        env["PYTHONPATH"] = str(ROOT)
+        p = subprocess.run([sys.executable, __file__, fn], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=60)
+        if p.returncode != 0:
+            print(f"[{mode}] FAIL：\n{p.stdout}\n{p.stderr}")
+            return 1
+        print(p.stdout.strip())
+    return 0
+
+
 # ---------- 父进程：双模式对比 ----------
 
 def main() -> int:
@@ -169,23 +220,27 @@ def main() -> int:
         return 1
     print(f"文件模式未加载 sqlalchemy ✓（DB 模式加载了 sqlalchemy：{sqla['db']}）")
 
-    if outputs["file"] == outputs["db"]:
-        steps = len(json.loads(outputs["file"]))
-        print(f"PASS：{steps} 步操作序列，文件模式 与 sqlite DB 模式 输出完全一致")
-        return 0
+    if outputs["file"] != outputs["db"]:
+        print("FAIL：两种模式输出不一致——")
+        a, b = (json.loads(outputs[m]) for m in ("file", "db"))
+        for x, y in zip(a, b):
+            if x != y:
+                print(f"  第一处差异 [{x[0]}]:\n    file: {json.dumps(x[1], ensure_ascii=False)}"
+                      f"\n    db:   {json.dumps(y[1], ensure_ascii=False)}")
+                break
+        return 1
+    steps = len(json.loads(outputs["file"]))
+    print(f"PASS：{steps} 步操作序列，文件模式 与 sqlite DB 模式 输出完全一致（owner_openid 全程不传）")
 
-    print("FAIL：两种模式输出不一致——")
-    a, b = (json.loads(outputs[m]) for m in ("file", "db"))
-    for x, y in zip(a, b):
-        if x != y:
-            print(f"  第一处差异 [{x[0]}]:\n    file: {json.dumps(x[1], ensure_ascii=False)}"
-                  f"\n    db:   {json.dumps(y[1], ensure_ascii=False)}")
-            break
-    return 1
+    return check_owner_scoping()
 
 
 if __name__ == "__main__":
     if "--child" in sys.argv:
         run_sequence()
+    elif "--child-owner-db" in sys.argv:
+        run_owner_db()
+    elif "--child-owner-file" in sys.argv:
+        run_owner_file()
     else:
         sys.exit(main())

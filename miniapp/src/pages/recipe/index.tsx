@@ -347,6 +347,37 @@ export default function RecipePage() {
     if (!confirm) return;
     _doIllust(kind, index1, key);
   }
+  /** 只支持删步骤插画——食材图标是全食单共享库，删除入口没开放（见 server 端点注释） */
+  async function deleteStepIllust(index1: number, key: string) {
+    if (!r || illustBusy[key]) return;
+    if (anyGenBusy()) { Taro.showToast({ title: "先等这张画完", icon: "none" }); return; }
+    const { confirm } = await Taro.showModal({
+      title: "删除插画", content: `删掉「步骤 ${index1}」这张插画？删掉后随时能再生成。`,
+      confirmText: "删除", confirmColor: "#c0392b",
+    });
+    if (!confirm) return;
+    setIllustBusy(b => ({ ...b, [key]: true }));
+    try {
+      await api.deleteIllust(id, index1);
+      setR(await api.recipe(id));
+    } catch (e) {
+      toastErr(e, "没删成");
+    } finally {
+      setIllustBusy(b => ({ ...b, [key]: false }));
+    }
+  }
+  /** 长按步骤插画：重画还是删——ActionSheet 二选一 */
+  async function stepIllustAction(index1: number, key: string) {
+    if (!r || !canIllust || illustBusy[key]) return;
+    if (anyGenBusy()) { Taro.showToast({ title: "先等这张画完", icon: "none" }); return; }
+    try {
+      const { tapIndex } = await Taro.showActionSheet({ itemList: ["重新生成", "删除插画"] });
+      if (tapIndex === 0) regenIllust("step", index1, key, `步骤 ${index1}`);
+      else if (tapIndex === 1) deleteStepIllust(index1, key);
+    } catch {
+      // 用户点了取消，showActionSheet 会 reject——静默即可
+    }
+  }
   function bustUrl(u: string, key: string): string {
     const v = illustBust[key];
     return v ? `${absUrl(u)}${u.includes("?") ? "&" : "?"}v=${v}` : absUrl(u);
@@ -666,9 +697,23 @@ export default function RecipePage() {
                   <View className="stepbody">
                     <View className="steptext">{s}</View>
                     {r.illust?.steps[i] && !imgErr[`step${i}`] ? (
-                      <Image src={bustUrl(r.illust.steps[i], `step${i}`)} mode="widthFix" className="stepimg"
-                        onError={() => failImg(`step${i}`)}
-                        onLongPress={() => regenIllust("step", i + 1, `step${i}`, `步骤 ${i + 1}`)} />
+                      <>
+                        <Image src={bustUrl(r.illust.steps[i], `step${i}`)} mode="widthFix" className="stepimg"
+                          onError={() => failImg(`step${i}`)}
+                          onLongPress={() => stepIllustAction(i + 1, `step${i}`)} />
+                        {canIllust && (
+                          <View className="stepactions">
+                            <View className="stepgen" hoverClass="btn-hover"
+                              onClick={() => regenIllust("step", i + 1, `step${i}`, `步骤 ${i + 1}`)}>
+                              {illustBusy[`step${i}`] ? "生成中…" : "重新生成"}
+                            </View>
+                            <View className="stepgen" hoverClass="btn-hover"
+                              onClick={() => deleteStepIllust(i + 1, `step${i}`)}>
+                              删除
+                            </View>
+                          </View>
+                        )}
+                      </>
                     ) : canIllust && (
                       <View className="stepgen" hoverClass="btn-hover"
                         onClick={() => genIllust("step", i + 1, `step${i}`)}>

@@ -294,6 +294,9 @@ export const api = {
     const { job_id } = await request<{ job_id: string }>("/api/ai/illustrate-start", "POST", { recipe_id, kind, index });
     return pollIllustrateJob(job_id);
   },
+  // 只支持删步骤插画：食材图标是全食单共享库，删除入口没开放（见 server/app.py 同名端点注释）
+  deleteIllust: (recipe_id: string, index: number) =>
+    request<{ ok: boolean }>(`/api/recipes/${recipe_id}/illust/step/${index}`, "DELETE"),
   config: () => request<ConfigPayload>("/api/config"),
   saveConfig: (c: object) => request<ConfigPayload>("/api/config", "PUT", c),
 };

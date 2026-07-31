@@ -153,6 +153,9 @@ export const api = {
     }));
     return pollIllustrateJob(job_id);
   },
+  // 只支持删步骤插画：食材图标是全食单共享库，删除入口没开放（见 server/app.py 同名端点注释）
+  deleteIllust: (recipe_id: string, index: number) =>
+    j<{ ok: boolean }>(fetch(`/api/recipes/${recipe_id}/illust/step/${index}`, { method: "DELETE" })),
   aiExtract: (text: string, source: string, url?: string) =>
     j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; source: string; video_can_retry: boolean }>(
       fetch("/api/ai/extract", {

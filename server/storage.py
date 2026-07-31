@@ -243,6 +243,10 @@ _DOC_FILES = {  # name → (文件名, json indent)；缩进与历史直写代�
     "config": ("config.json", 2),
 }
 
+# 多租户：这四类文档按厨房隔离，app.py 在 name 后拼 ":<openid>"（"config:oXXXX" 这样）；
+# ingredients/<食材名> 不在这套里——食材图标/营养知识库继续全食单共享，不隔离。
+_KITCHEN_DOC_RE = re.compile(r"(orders|shopping|pantry|config):([A-Za-z0-9_-]{1,64})")
+
 
 def _doc_file(name: str) -> tuple[Path, int]:
     if name in _DOC_FILES:
@@ -253,6 +257,12 @@ def _doc_file(name: str) -> tuple[Path, int]:
         if not n or "/" in n or n.startswith("."):
             raise ValueError(f"非法食材文档名：{name}")
         return DATA / "ingredients" / f"{n}.json", 1
+    m = _KITCHEN_DOC_RE.fullmatch(name)
+    if m:
+        base, openid = m.groups()
+        fn, indent = _DOC_FILES[base]
+        # 文件模式实际不会跑多租户（云端才有 X-WX-OPENID 身份），这里只是给个不会踩坑的路径
+        return DATA / "kitchens" / openid / fn, indent
     raise ValueError(f"未知文档名：{name}")
 
 
@@ -267,10 +277,13 @@ class _FileStore:
 
     # ----- 菜谱 -----
 
+    # owner_openid 参数：文件模式永远单租户语义，接收但忽略——多租户只在云端 DB 模式跑，
+    # 这个参数存在只是为了跟 _DbStore 保持同一套调用签名，app.py 不用按模式分叉调用代码。
+
     def recipe_exists(self, rid: str) -> bool:
         return (RECIPES_DIR / f"{rid}.md").exists()
 
-    def list_recipes(self) -> list[dict]:
+    def list_recipes(self, owner_openid: str | None = None) -> list[dict]:
         out = []
         for p in sorted(RECIPES_DIR.glob("*.md")):
             r = _parse_md(p.read_text(encoding="utf-8"))
@@ -278,7 +291,7 @@ class _FileStore:
             out.append(r)
         return out
 
-    def get_recipe(self, rid: str) -> dict | None:
+    def get_recipe(self, rid: str, owner_openid: str | None = None) -> dict | None:
         if not valid_id(rid):  # 挡住大小写变体/畸形 id（见 _ID_RE 注释）
             return None
         p = RECIPES_DIR / f"{rid}.md"
@@ -288,7 +301,7 @@ class _FileStore:
         r["id"] = rid
         return _attach_illust(r, rid)
 
-    def save_recipe(self, r: dict) -> dict:
+    def save_recipe(self, r: dict, owner_openid: str | None = None) -> dict:
         with _lock:
             if not r.get("id"):
                 r["id"] = slugify(r["name"])
@@ -300,7 +313,7 @@ class _FileStore:
             _atomic_write(RECIPES_DIR / f"{r['id']}.md", _dump_md(r))
         return r
 
-    def delete_recipe(self, rid: str) -> bool:
+    def delete_recipe(self, rid: str, owner_openid: str | None = None) -> bool:
         if not valid_id(rid):  # 大小写变体不得删掉真实菜谱
             return False
         p = RECIPES_DIR / f"{rid}.md"
@@ -309,7 +322,7 @@ class _FileStore:
         p.unlink()
         return True
 
-    def seed_recipe(self, src: Path) -> bool:
+    def seed_recipe(self, src: Path, owner_openid: str | None = None) -> bool:
         """示例菜谱入库（幂等）：文件模式=原样拷贝文件（字节不动）。"""
         dst = RECIPES_DIR / src.name
         if dst.exists():
@@ -319,13 +332,13 @@ class _FileStore:
 
     # ----- 吃饭记录 -----
 
-    def list_meals(self) -> list[dict]:
+    def list_meals(self, owner_openid: str | None = None) -> list[dict]:
         return json.loads(MEALS_FILE.read_text(encoding="utf-8"))
 
     def _write_meals(self, meals: list[dict]) -> None:
         _atomic_write(MEALS_FILE, json.dumps(meals, ensure_ascii=False, indent=1) + "\n")
 
-    def add_meal(self, meal: dict) -> dict:
+    def add_meal(self, meal: dict, owner_openid: str | None = None) -> dict:
         with _lock:
             meals = self.list_meals()
             # 唯一 id：秒级时间戳 + 短随机后缀，杜绝同秒双击/重试碰撞（碰撞会导致删除连坐）
@@ -343,7 +356,7 @@ class _FileStore:
             self._write_meals(meals)
         return meal
 
-    def update_meal(self, mid: str, patch: dict) -> dict | None:
+    def update_meal(self, mid: str, patch: dict, owner_openid: str | None = None) -> dict | None:
         with _lock:
             meals = self.list_meals()
             for m in meals:
@@ -353,7 +366,7 @@ class _FileStore:
                     return m
         return None
 
-    def delete_meal(self, mid: str) -> bool:
+    def delete_meal(self, mid: str, owner_openid: str | None = None) -> bool:
         with _lock:
             meals = self.list_meals()
             # 只删第一条匹配：历史数据可能存在同 id（老版本秒级 id 碰撞），避免一次连坐删多条
@@ -363,6 +376,20 @@ class _FileStore:
                     self._write_meals(meals)
                     return True
         return False
+
+    # ----- 厨房（多租户，文件模式不支持——诊断性报错，正常不该走到这） -----
+
+    def get_kitchen(self, openid: str) -> dict | None:
+        raise RuntimeError("文件模式不支持多租户厨房")
+
+    def upsert_kitchen(self, openid: str, **fields) -> dict:
+        raise RuntimeError("文件模式不支持多租户厨房")
+
+    def get_kitchen_by_guest_token(self, t: str) -> dict | None:
+        raise RuntimeError("文件模式不支持多租户厨房")
+
+    def bump_cutout_count(self, openid: str) -> int:
+        raise RuntimeError("文件模式不支持多租户厨房")
 
     # ----- 杂项文档 -----
 
@@ -429,6 +456,8 @@ class _DbStore:
                 sa.Column("ingredients", sa.Text()),
                 sa.Column("steps", sa.Text()),
                 sa.Column("tips", sa.Text()),
+                # 多租户：哪个厨房的菜；单租户/文件模式恒 NULL，不影响历史行为
+                sa.Column("owner_openid", sa.String(64), index=True),
             )
             self.t_meals = sa.Table(
                 "meals", md,
@@ -442,13 +471,28 @@ class _DbStore:
                 sa.Column("recipe_name", sa.Text()),
                 # seq：插入顺序（文件模式的数组 append 顺序）；同秒多条按 id 排会乱序
                 sa.Column("seq", sa.Integer(), index=True),
+                sa.Column("owner_openid", sa.String(64), index=True),
             )
             self.t_kvdocs = sa.Table(
                 "kvdocs", md,
                 sa.Column("name", sa.String(191), primary_key=True),  # utf8mb4 索引长度上限内
                 sa.Column("body", body_t),
             )
-            md.create_all(engine)
+            # 多租户：每个 openid 一间厨房。M1 只建列/建表，ai_config/serverchan_key 加密读写是 M2 的事。
+            self.t_kitchens = sa.Table(
+                "kitchens", md,
+                sa.Column("openid", sa.String(64), primary_key=True),
+                sa.Column("created", sa.String(20)),
+                sa.Column("name", sa.Text()),
+                sa.Column("guest_token", sa.String(32), unique=True, index=True),
+                sa.Column("ai_config", body_t),
+                sa.Column("serverchan_key", body_t),
+                sa.Column("cutout_count", sa.Integer()),
+                sa.Column("cutout_count_date", sa.String(10)),
+                sa.Column("photo_count", sa.Integer()),
+            )
+            md.create_all(engine)  # 只补缺表；已存在的 recipes/meals 不会因为表定义多了列就自动加列
+            self._ensure_owner_columns(sa, engine)  # 老库补 owner_openid 列，幂等
             self._engine = engine
 
     def _ensure_mysql_database(self, sa) -> None:
@@ -465,6 +509,21 @@ class _DbStore:
             server.dispose()
         except Exception:  # 库已存在但无 CREATE 权限等：交给正式连接去报真实错误
             pass
+
+    def _ensure_owner_columns(self, sa, engine) -> None:
+        """老库补 owner_openid 列：create_all 只建缺表，不会给已存在的 recipes/meals 加列。
+        跟 _ensure_mysql_database 同一个风格——吞掉"列已存在"类错误，幂等、可重复跑。"""
+        for table in ("recipes", "meals"):
+            try:
+                with engine.begin() as c:
+                    c.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN owner_openid VARCHAR(64) NULL"))
+            except Exception:
+                pass
+            try:
+                with engine.begin() as c:
+                    c.execute(sa.text(f"CREATE INDEX ix_{table}_owner_openid ON {table} (owner_openid)"))
+            except Exception:
+                pass
 
     def init_dirs(self) -> None:
         # 照片本地兜底路径与静态挂载仍需要目录存在（COS 未配时云上也写本地）
@@ -508,27 +567,33 @@ class _DbStore:
             return c.execute(sa.select(self.t_recipes.c.id)
                              .where(self.t_recipes.c.id == rid)).first() is not None
 
-    def list_recipes(self) -> list[dict]:
+    def list_recipes(self, owner_openid: str | None = None) -> list[dict]:
         self._ensure()
         sa = self.sa
+        stmt = sa.select(self.t_recipes)
+        if owner_openid is not None:
+            stmt = stmt.where(self.t_recipes.c.owner_openid == owner_openid)
         with self._engine.connect() as c:
-            rows = c.execute(sa.select(self.t_recipes)).all()
+            rows = c.execute(stmt).all()
         # 与文件模式同序：文件模式按文件名 "<id>.md" 排（.md 参与比较，"-" < "."），
         # 在 Python 里排避免各数据库 collation 差异
         return [self._row_to_recipe(r) for r in sorted(rows, key=lambda r: f"{r.id}.md")]
 
-    def get_recipe(self, rid: str) -> dict | None:
+    def get_recipe(self, rid: str, owner_openid: str | None = None) -> dict | None:
         if not valid_id(rid):
             return None
         self._ensure()
         sa = self.sa
+        stmt = sa.select(self.t_recipes).where(self.t_recipes.c.id == rid)
+        if owner_openid is not None:
+            stmt = stmt.where(self.t_recipes.c.owner_openid == owner_openid)
         with self._engine.connect() as c:
-            row = c.execute(sa.select(self.t_recipes).where(self.t_recipes.c.id == rid)).first()
-        if row is None:
+            row = c.execute(stmt).first()
+        if row is None:  # 不存在 / 存在但不是这个厨房的——两种情况外部看起来都该是"没有"
             return None
         return _attach_illust(self._row_to_recipe(row), rid)
 
-    def save_recipe(self, r: dict) -> dict:
+    def save_recipe(self, r: dict, owner_openid: str | None = None) -> dict:
         with _lock:
             if not r.get("id"):
                 r["id"] = slugify(r["name"])
@@ -539,10 +604,10 @@ class _DbStore:
             # 与文件模式同口径：dump→parse 走一遍规范化（grams 收敛、difficulty 白名单等）
             canon = _parse_md(_dump_md(r))
             canon["id"] = r["id"]
-            self._upsert_recipe(canon)
+            self._upsert_recipe(canon, owner_openid)
         return r
 
-    def _upsert_recipe(self, canon: dict) -> None:
+    def _upsert_recipe(self, canon: dict, owner_openid: str | None = None) -> None:
         self._ensure()
         sa = self.sa
         vals = {
@@ -554,40 +619,57 @@ class _DbStore:
             "steps": json.dumps(canon["steps"], ensure_ascii=False),
             "tips": json.dumps(canon["tips"], ensure_ascii=False),
         }
+        if owner_openid is not None:
+            vals["owner_openid"] = owner_openid
         with self._engine.begin() as c:
-            n = c.execute(sa.update(self.t_recipes)
-                          .where(self.t_recipes.c.id == canon["id"]).values(**vals)).rowcount
+            where = self.t_recipes.c.id == canon["id"]
+            if owner_openid is not None:
+                where = where & (self.t_recipes.c.owner_openid == owner_openid)
+            n = c.execute(sa.update(self.t_recipes).where(where).values(**vals)).rowcount
             if not n:
+                if owner_openid is not None:
+                    # 更新没打中：要么是新菜（正常走 insert），要么 id 已经被别的厨房占了
+                    # （id 由菜名 slugify 来，容易撞）——后者不能悄悄插入/覆盖，明确拒绝
+                    exists = c.execute(sa.select(self.t_recipes.c.id)
+                                        .where(self.t_recipes.c.id == canon["id"])).first()
+                    if exists is not None:
+                        raise PermissionError(f"这道菜不属于你的厨房：{canon['id']}")
                 c.execute(sa.insert(self.t_recipes).values(id=canon["id"], **vals))
 
-    def delete_recipe(self, rid: str) -> bool:
+    def delete_recipe(self, rid: str, owner_openid: str | None = None) -> bool:
         if not valid_id(rid):
             return False
         self._ensure()
         sa = self.sa
+        where = self.t_recipes.c.id == rid
+        if owner_openid is not None:
+            where = where & (self.t_recipes.c.owner_openid == owner_openid)
         with self._engine.begin() as c:
-            n = c.execute(sa.delete(self.t_recipes).where(self.t_recipes.c.id == rid)).rowcount
+            n = c.execute(sa.delete(self.t_recipes).where(where)).rowcount
         return bool(n)
 
-    def seed_recipe(self, src: Path) -> bool:
+    def seed_recipe(self, src: Path, owner_openid: str | None = None) -> bool:
         """示例菜谱入库（幂等）：DB 模式=解析 md 后插入（已存在则跳过）。"""
         canon = _parse_md(src.read_text(encoding="utf-8"))
         canon["id"] = canon["id"] or src.stem
         if not valid_id(canon["id"]) or self.recipe_exists(canon["id"]):
             return False
-        self._upsert_recipe(canon)
+        self._upsert_recipe(canon, owner_openid)
         return True
 
     # ----- 吃饭记录 -----
 
-    def list_meals(self) -> list[dict]:
+    def list_meals(self, owner_openid: str | None = None) -> list[dict]:
         self._ensure()
         sa = self.sa
+        stmt = sa.select(self.t_meals).order_by(self.t_meals.c.seq)
+        if owner_openid is not None:
+            stmt = stmt.where(self.t_meals.c.owner_openid == owner_openid)
         with self._engine.connect() as c:
-            rows = c.execute(sa.select(self.t_meals).order_by(self.t_meals.c.seq)).all()
+            rows = c.execute(stmt).all()
         return [self._row_to_meal(r) for r in rows]
 
-    def add_meal(self, meal: dict) -> dict:
+    def add_meal(self, meal: dict, owner_openid: str | None = None) -> dict:
         self._ensure()
         sa = self.sa
         with _lock:
@@ -599,36 +681,43 @@ class _DbStore:
                     mid = f"{base}-{secrets.token_hex(2)}"
                 meal["id"] = mid
                 seq = c.execute(sa.select(sa.func.max(self.t_meals.c.seq))).scalar() or 0
-                r = self.get_recipe(meal.get("recipe_id", ""))
+                r = self.get_recipe(meal.get("recipe_id", ""), owner_openid)
                 if r is not None:
                     meal.setdefault("recipe_name", r["name"])
                 c.execute(sa.insert(self.t_meals).values(
                     id=mid, recipe_id=meal.get("recipe_id"), date=meal.get("date"),
                     rating=meal.get("rating"), note=meal.get("note"),
                     photo_card=meal.get("photo_card"), kcal=meal.get("kcal"),
-                    recipe_name=meal.get("recipe_name"), seq=seq + 1))
+                    recipe_name=meal.get("recipe_name"), seq=seq + 1,
+                    owner_openid=owner_openid))
         return meal
 
-    def update_meal(self, mid: str, patch: dict) -> dict | None:
+    def update_meal(self, mid: str, patch: dict, owner_openid: str | None = None) -> dict | None:
         self._ensure()
         sa = self.sa
         vals = {k: patch[k] for k in ("date", "rating", "note") if k in patch}
         with _lock:
             with self._engine.begin() as c:
-                row = c.execute(sa.select(self.t_meals).where(self.t_meals.c.id == mid)).first()
+                stmt = sa.select(self.t_meals).where(self.t_meals.c.id == mid)
+                if owner_openid is not None:
+                    stmt = stmt.where(self.t_meals.c.owner_openid == owner_openid)
+                row = c.execute(stmt).first()
                 if row is None:
                     return None
                 if vals:
                     c.execute(sa.update(self.t_meals).where(self.t_meals.c.id == mid).values(**vals))
-                    row = c.execute(sa.select(self.t_meals).where(self.t_meals.c.id == mid)).first()
+                    row = c.execute(stmt).first()
         return self._row_to_meal(row)
 
-    def delete_meal(self, mid: str) -> bool:
+    def delete_meal(self, mid: str, owner_openid: str | None = None) -> bool:
         self._ensure()
         sa = self.sa
+        where = self.t_meals.c.id == mid
+        if owner_openid is not None:
+            where = where & (self.t_meals.c.owner_openid == owner_openid)
         with _lock:
             with self._engine.begin() as c:
-                n = c.execute(sa.delete(self.t_meals).where(self.t_meals.c.id == mid)).rowcount
+                n = c.execute(sa.delete(self.t_meals).where(where)).rowcount
         return bool(n)
 
     # ----- 杂项文档 -----
@@ -661,6 +750,64 @@ class _DbStore:
                              .where(self.t_kvdocs.c.name.like(prefix.replace("%", r"\%") + "%"))).all()
         return sorted(r.name[len(prefix):] for r in rows)
 
+    # ----- 厨房（多租户，M1：只有身份+配额，ai_config/serverchan_key 留给 M2 加密读写） -----
+
+    @staticmethod
+    def _row_to_kitchen(row) -> dict:
+        return {
+            "openid": row.openid, "created": row.created or "", "name": row.name or "",
+            "guest_token": row.guest_token or "",
+            "ai_config": row.ai_config, "serverchan_key": row.serverchan_key,
+            "cutout_count": row.cutout_count or 0, "cutout_count_date": row.cutout_count_date or "",
+            "photo_count": row.photo_count or 0,
+        }
+
+    def get_kitchen(self, openid: str) -> dict | None:
+        self._ensure()
+        sa = self.sa
+        with self._engine.connect() as c:
+            row = c.execute(sa.select(self.t_kitchens)
+                            .where(self.t_kitchens.c.openid == openid)).first()
+        return self._row_to_kitchen(row) if row is not None else None
+
+    def upsert_kitchen(self, openid: str, **fields) -> dict:
+        self._ensure()
+        sa = self.sa
+        with self._engine.begin() as c:
+            n = c.execute(sa.update(self.t_kitchens)
+                          .where(self.t_kitchens.c.openid == openid).values(**fields)).rowcount
+            if not n:
+                c.execute(sa.insert(self.t_kitchens).values(openid=openid, **fields))
+            row = c.execute(sa.select(self.t_kitchens).where(self.t_kitchens.c.openid == openid)).first()
+        return self._row_to_kitchen(row)
+
+    def get_kitchen_by_guest_token(self, t: str) -> dict | None:
+        if not t:
+            return None
+        self._ensure()
+        sa = self.sa
+        with self._engine.connect() as c:
+            row = c.execute(sa.select(self.t_kitchens)
+                            .where(self.t_kitchens.c.guest_token == t)).first()
+        return self._row_to_kitchen(row) if row is not None else None
+
+    def bump_cutout_count(self, openid: str) -> int:
+        """今日抠图计数 +1（跨天自动清零），返回累加后的当日计数，供调用方判断是否超额。"""
+        self._ensure()
+        sa = self.sa
+        today = date.today().isoformat()
+        with _lock:
+            with self._engine.begin() as c:
+                row = c.execute(sa.select(self.t_kitchens.c.cutout_count, self.t_kitchens.c.cutout_count_date)
+                                .where(self.t_kitchens.c.openid == openid)).first()
+                count = (row.cutout_count or 0) + 1 if row is not None and row.cutout_count_date == today else 1
+                n = c.execute(sa.update(self.t_kitchens).where(self.t_kitchens.c.openid == openid)
+                             .values(cutout_count=count, cutout_count_date=today)).rowcount
+                if not n:  # 厨房行还没建（理论上 identity_gate 早该建好了），兜底建一份
+                    c.execute(sa.insert(self.t_kitchens).values(
+                        openid=openid, cutout_count=count, cutout_count_date=today))
+        return count
+
 
 # ---------- 实现选择（模块加载时按环境变量定一次） ----------
 
@@ -685,47 +832,104 @@ def init_dirs() -> None:
     _store.init_dirs()
 
 
-def list_recipes() -> list[dict]:
-    return _store.list_recipes()
+def list_recipes(owner_openid: str | None = None) -> list[dict]:
+    return _store.list_recipes(owner_openid)
 
 
-def get_recipe(rid: str) -> dict | None:
-    return _store.get_recipe(rid)
+def get_recipe(rid: str, owner_openid: str | None = None) -> dict | None:
+    return _store.get_recipe(rid, owner_openid)
 
 
-def save_recipe(r: dict) -> dict:
-    return _store.save_recipe(r)
+def save_recipe(r: dict, owner_openid: str | None = None) -> dict:
+    return _store.save_recipe(r, owner_openid)
 
 
-def delete_recipe(rid: str) -> bool:
-    return _store.delete_recipe(rid)
+def delete_recipe(rid: str, owner_openid: str | None = None) -> bool:
+    return _store.delete_recipe(rid, owner_openid)
 
 
-def seed_recipe(src: Path) -> bool:
-    return _store.seed_recipe(src)
+def seed_recipe(src: Path, owner_openid: str | None = None) -> bool:
+    return _store.seed_recipe(src, owner_openid)
 
 
-def set_cover(rid: str, cover: str) -> None:
-    r = get_recipe(rid)
+def set_cover(rid: str, cover: str, owner_openid: str | None = None) -> None:
+    r = get_recipe(rid, owner_openid)
     if r is not None:
         r["cover"] = cover
-        save_recipe(r)
+        save_recipe(r, owner_openid)
 
 
-def list_meals() -> list[dict]:
-    return _store.list_meals()
+def list_meals(owner_openid: str | None = None) -> list[dict]:
+    return _store.list_meals(owner_openid)
 
 
-def add_meal(meal: dict) -> dict:
-    return _store.add_meal(meal)
+def add_meal(meal: dict, owner_openid: str | None = None) -> dict:
+    return _store.add_meal(meal, owner_openid)
 
 
-def update_meal(mid: str, patch: dict) -> dict | None:
-    return _store.update_meal(mid, patch)
+def update_meal(mid: str, patch: dict, owner_openid: str | None = None) -> dict | None:
+    return _store.update_meal(mid, patch, owner_openid)
 
 
-def delete_meal(mid: str) -> bool:
-    return _store.delete_meal(mid)
+def delete_meal(mid: str, owner_openid: str | None = None) -> bool:
+    return _store.delete_meal(mid, owner_openid)
+
+
+# ----- 厨房（多租户，M1）-----
+
+def get_kitchen(openid: str) -> dict | None:
+    return _store.get_kitchen(openid)
+
+
+def upsert_kitchen(openid: str, **fields) -> dict:
+    return _store.upsert_kitchen(openid, **fields)
+
+
+def get_kitchen_by_guest_token(t: str) -> dict | None:
+    return _store.get_kitchen_by_guest_token(t)
+
+
+def bump_cutout_count(openid: str) -> int:
+    return _store.bump_cutout_count(openid)
+
+
+def count_unowned() -> dict:
+    """claim_unowned 的只读预演版：数一数 recipes/meals 里还有多少行 owner_openid 是 NULL。"""
+    if isinstance(_store, _FileStore):
+        return {"recipes": 0, "meals": 0}
+    store = _store
+    store._ensure()
+    sa = store.sa
+    with store._engine.connect() as c:
+        counts = {}
+        for name, table in (("recipes", store.t_recipes), ("meals", store.t_meals)):
+            counts[name] = c.execute(sa.select(sa.func.count()).select_from(table)
+                                     .where(table.c.owner_openid.is_(None))).scalar() or 0
+    return counts
+
+
+def claim_unowned(owner_openid: str) -> dict:
+    """多租户回填用：把 recipes/meals 里 owner_openid 还是 NULL 的行全部认领给这个 openid
+    （生产库切多租户前的存量数据变成"第一个租户"）。文件模式没有 owner_openid 这回事，
+    直接返回 0/0——脚本调用方应该已经用 health() 先确认是 DB 模式，这里只是兜底不炸。"""
+    if isinstance(_store, _FileStore):
+        return {"recipes": 0, "meals": 0}
+    store = _store
+    store._ensure()
+    sa = store.sa
+    with store._engine.begin() as c:
+        counts = {}
+        for name, table in (("recipes", store.t_recipes), ("meals", store.t_meals)):
+            n = c.execute(sa.update(table).where(table.c.owner_openid.is_(None))
+                          .values(owner_openid=owner_openid)).rowcount
+            counts[name] = n
+    return counts
+
+
+def doc_name(base: str, owner_openid: str | None) -> str:
+    """kvdocs 文档名按厨房加前缀（orders/shopping/pantry 这三类，config 不在这套里——
+    见 server/app.py 的 _require_owner_kitchen 注释）。openid 为空原样返回，行为不变。"""
+    return f"{base}:{owner_openid}" if owner_openid else base
 
 
 def health() -> dict:
@@ -760,10 +964,10 @@ def list_doc_names(prefix: str) -> list[str]:
     return _store.list_doc_names(prefix)
 
 
-def recipe_stats() -> dict[str, dict]:
+def recipe_stats(owner_openid: str | None = None) -> dict[str, dict]:
     """recipe_id → {times, rating}"""
     stats: dict[str, dict] = {}
-    for m in list_meals():
+    for m in list_meals(owner_openid):
         s = stats.setdefault(m.get("recipe_id", ""), {"times": 0, "ratings": []})
         s["times"] += 1
         # 只收 1-5 整数：脏数据里的字符串评分会让下面求和抛 TypeError，连累整个菜谱列表 500
