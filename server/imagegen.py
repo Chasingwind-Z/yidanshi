@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 import urllib.request
 
-from . import storage
+from . import photostore, storage
 
 CONFIG_FILE = storage.DATA / "config.json"  # 仅文件模式的物理位置；读取走 storage.read_doc
 
@@ -140,18 +140,21 @@ def refine(raw: bytes, mime: str = "image/jpeg") -> bytes:
 
 def illustrate(recipe: dict, kind: str, index: int) -> str:
     """为菜谱的第 index 个食材/步骤生成插画，返回可访问的 URL 路径。index 从 1 开始。
-    食材图标存全局共享库（同名食材全食单复用，不重复花钱）；步骤图按菜谱存。"""
+    食材图标存全局共享库（同名食材全食单复用，不重复花钱）；步骤图按菜谱存。
+
+    统一走 photostore.save（配了 COS 就传 COS，没配就本地）——之前直接写容器本地磁盘，
+    云端配了 COS 时 storage._attach_illust 却无条件拼 COS 网址（COS 对象存在性查起来贵，
+    干脆不查，靠前端 onError 兜底），两边路径对不上：生成本身没报错、job 状态也是 done，
+    但小程序拿到的是从没上传过的 COS 网址，一直 404——查了很久才揪出这个（zzf 反馈
+    "是不是生成好没显示在小程序上"，命中了）。"""
     cfg = _config()
     if kind == "ing":
         name = recipe["ingredients"][index - 1]["name"]
-        path = storage.ING_ICON_DIR / f"{name}.png"
-        if not path.exists():
-            storage.ING_ICON_DIR.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(generate(ingredient_prompt(name), cfg.get("size_icon", ICON_SIZE)))
-        return f"/photos/illust/ingredients/{name}.png"
+        url = photostore.url_for("illust/ingredients", f"{name}.png")
+        if photostore.fetch(url) is None:  # 没生成过（同名食材全食单共享，避免重复花钱）
+            data = generate(ingredient_prompt(name), cfg.get("size_icon", ICON_SIZE))
+            photostore.save("illust/ingredients", f"{name}.png", data)
+        return url
 
     data = generate(step_prompt(recipe["steps"][index - 1]), cfg.get("size_step", STEP_SIZE))
-    out_dir = storage.PHOTOS / "illust" / recipe["id"]
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / f"step-{index}.png").write_bytes(data)
-    return f"/photos/illust/{recipe['id']}/step-{index}.png"
+    return photostore.save(f"illust/{recipe['id']}", f"step-{index}.png", data)
