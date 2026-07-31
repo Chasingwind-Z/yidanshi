@@ -157,6 +157,12 @@
   align-items: center;
   gap: 6px;
 }
+.portionrow > .dimtext {
+  /* 「份量」标签没设过 flex-shrink，被两个固定宽度按钮挤到比两个字还窄，
+   * 逼得文字竖着一字一行换行（zzf 反馈截图里看到的就是这个）——锁住不缩、不换行 */
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .stepbtn {
   width: 44rpx;
   height: 44rpx;
@@ -178,6 +184,7 @@
   font-family: var(--mono);
   font-size: 13px;
   min-width: 26px;
+  flex-shrink: 0;
   text-align: center;
 }
 .portionhint {

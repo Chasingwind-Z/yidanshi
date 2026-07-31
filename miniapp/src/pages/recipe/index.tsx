@@ -315,7 +315,9 @@ export default function RecipePage() {
       setR(await api.recipe(id));
       setIllustBust(b => ({ ...b, [key]: Date.now() }));
     } catch (e) {
-      Taro.showToast({ title: `没画成：${(e as Error).message}`, icon: "none" });
+      // toast 显示区域小，长错误信息会被截断看不全（zzf 反馈两次都没看清）——
+      // 改用 showModal，内容区域够大，还得手动关掉，不会自己一闪而过
+      Taro.showModal({ title: "没画成", content: (e as Error).message || "未知错误", showCancel: false });
     } finally {
       setIllustBusy(b => ({ ...b, [key]: false }));
     }
