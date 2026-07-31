@@ -47,7 +47,8 @@ async function j<T>(res: Promise<Response>): Promise<T> {
 
 // 插画生成改"提交任务 + 轮询"（跟 miniapp 对齐，服务端已把老的同步接口换掉）：
 // 提交后立刻拿 job_id，每隔几秒查一次状态，单次查询很快，不会像旧接口那样一路等到生图完成。
-async function pollIllustrateJob(jobId: string, intervalMs = 2500, maxAttempts = 40): Promise<{ url: string }> {
+// 生产环境实测过真实生成耗时 77s/84s（图片尺寸对耗时影响很小）——轮询窗口留够 2 倍余量。
+async function pollIllustrateJob(jobId: string, intervalMs = 3000, maxAttempts = 60): Promise<{ url: string }> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs));
     const job = await j<{ status: string; url: string | null; error: string | null }>(

@@ -363,8 +363,8 @@ export default function RecipePage({ id }: { id: string }) {
               <h4>食材准备</h4>
               {r.ingredients.length > 0 && (
                 <div className="portionbar">
+                  <span className="dimtext">份量</span>
                   <div className="portionrow">
-                    <span className="dimtext">份量</span>
                     <button className="stepbtn" disabled={portion <= 0.5}
                       onClick={() => setPortion(p => Math.max(0.5, Math.round((p - 0.5) * 10) / 10))}>－</button>
                     <span className="portionval">{portion}×</span>

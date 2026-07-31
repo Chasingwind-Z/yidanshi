@@ -220,7 +220,7 @@ h2 { font-size: 18px; line-height: 1.3; margin: 28px 0 8px; font-family: var(--s
 
 /* 份量换算：纯展示倍数，不写回菜谱。步进器而非固定挡位——想要几倍自己点出来，不用弹键盘 */
 .portionbar { margin: 6px 0 12px; }
-.portionrow { display: flex; align-items: center; gap: 8px; }
+.portionrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .portionhint { display: block; margin-top: 4px; }
 .stepbtn {
   width: 26px; height: 26px; border: 1px solid var(--line-box); border-radius: 6px;

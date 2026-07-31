@@ -216,7 +216,9 @@ export async function uploadCutout(
 // callContainer 调用超时（错误码 102002），真机实测过把 request() 的 timeout 参数拉到
 // 90s 依然 102002——那是平台硬上限，不是本地能调大的数字。改成提交后立刻拿到 job_id，
 // 每隔几秒问一次状态（单次查询请求本身很快，不会撞超时），总轮询窗口给够长。
-async function pollIllustrateJob(jobId: string, intervalMs = 2500, maxAttempts = 40): Promise<{ url: string }> {
+// 从生产环境直接实测过两次真实生成耗时：77s、84s（图片尺寸大小对耗时几乎没影响，
+// 模型本身就是这个量级）——轮询窗口至少要留够这个的 2 倍余量，不然网络稍微一抖就撞线。
+async function pollIllustrateJob(jobId: string, intervalMs = 3000, maxAttempts = 60): Promise<{ url: string }> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs));
     const job = await request<{ status: string; url: string | null; error: string | null }>(
