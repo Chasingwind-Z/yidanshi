@@ -212,6 +212,21 @@ export async function uploadCutout(
   return uploadViaUploadFile(url, uploadPath, formData);
 }
 
+// 插画生成改"提交任务 + 轮询"：单个请求一路等到生图完成，撞的是微信平台自己的
+// callContainer 调用超时（错误码 102002），真机实测过把 request() 的 timeout 参数拉到
+// 90s 依然 102002——那是平台硬上限，不是本地能调大的数字。改成提交后立刻拿到 job_id，
+// 每隔几秒问一次状态（单次查询请求本身很快，不会撞超时），总轮询窗口给够长。
+async function pollIllustrateJob(jobId: string, intervalMs = 2500, maxAttempts = 40): Promise<{ url: string }> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    const job = await request<{ status: string; url: string | null; error: string | null }>(
+      `/api/ai/illustrate-status?job_id=${encodeURIComponent(jobId)}`, "GET");
+    if (job.status === "done" && job.url) return { url: job.url };
+    if (job.status === "error") throw new Error(job.error || "生成失败");
+  }
+  throw new Error("画得有点久，还没出来——过一会再回来看看，后台可能还在继续画");
+}
+
 // ---------- 接口（与 web/src/api.ts 对应） ----------
 export const api = {
   recipes: () => request<{ categories: string[]; recipes: Recipe[] }>("/api/recipes"),
@@ -272,9 +287,11 @@ export const api = {
     request<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; difficulty?: string | null; source: string; video_can_retry: boolean }>(
       "/api/ai/extract-video", "POST", { url }, 150000),
   /** 逐张生成插画（食材图标/步骤图），前端按张循环调用以显示进度，与 web/src/api.ts 一致——
-   * 生图常要几十秒，callContainer 默认等待时间不够，单独给长一点 */
-  aiIllustrate: (recipe_id: string, kind: "ing" | "step", index: number) =>
-    request<{ url: string }>("/api/ai/illustrate", "POST", { recipe_id, kind, index }, 90000),
+   * 提交任务后轮询状态，不再是一个请求从头等到尾（见 pollIllustrateJob 注释） */
+  aiIllustrate: async (recipe_id: string, kind: "ing" | "step", index: number) => {
+    const { job_id } = await request<{ job_id: string }>("/api/ai/illustrate-start", "POST", { recipe_id, kind, index });
+    return pollIllustrateJob(job_id);
+  },
   config: () => request<ConfigPayload>("/api/config"),
   saveConfig: (c: object) => request<ConfigPayload>("/api/config", "PUT", c),
 };

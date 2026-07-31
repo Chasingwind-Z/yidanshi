@@ -9,6 +9,7 @@ import random
 import re
 import threading
 import time
+import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -576,9 +577,36 @@ def ai_status():
     return {**llm.backend_status(), "imagegen": imagegen.backend_status(), "video": llm.video_status()}
 
 
-@app.post("/api/ai/illustrate")
-def ai_illustrate(body: dict):
-    """逐张生成插画：{recipe_id, kind: "ing"|"step", index(从1起)}。前端按张循环调用以显示进度。"""
+# 插画生成走"提交任务 + 轮询"，不再是一个请求从头等到尾：doubao 生图常要几十秒，
+# 云托管 callContainer 撞的是微信平台自己的调用超时（102002），不是本地能调大的数字——
+# 之前试过把 request() 的 timeout 参数拉到 90s 仍然 102002，说明这条路走不通，
+# 只有让单次请求变快（提交/查询都是毫秒级）才是真正的解法。
+# 进程内 dict 就够（单实例；云端缩零重启丢任务可接受——前端轮询超时会提示重试）。
+_ILLUST_JOB_TTL = 600  # 秒：任务保留窗口，够轮询用，避免无限增长
+_illust_jobs: dict[str, dict] = {}  # job_id → {status, url, error, ts}
+_illust_jobs_lock = threading.Lock()
+
+
+def _prune_illust_jobs() -> None:
+    cutoff = time.time() - _ILLUST_JOB_TTL
+    for jid in [j for j, v in _illust_jobs.items() if v["ts"] < cutoff]:
+        _illust_jobs.pop(jid, None)
+
+
+def _run_illustrate_job(job_id: str, r: dict, kind: str, index: int) -> None:
+    try:
+        url = imagegen.illustrate(r, kind, index)
+        with _illust_jobs_lock:
+            _illust_jobs[job_id] = {"status": "done", "url": url, "error": None, "ts": time.time()}
+    except Exception as e:  # noqa: BLE001 —— 后台线程，异常must落到任务状态里，不能让线程静默死掉
+        with _illust_jobs_lock:
+            _illust_jobs[job_id] = {"status": "error", "url": None, "error": str(e), "ts": time.time()}
+
+
+@app.post("/api/ai/illustrate-start")
+def ai_illustrate_start(body: dict):
+    """提交一张插画生成任务：{recipe_id, kind: "ing"|"step", index(从1起)} → {job_id}。
+    立刻返回（不等生图完成），真正的生成在后台线程跑，前端拿 job_id 轮询 -status。"""
     r = storage.get_recipe(body.get("recipe_id", ""))
     if r is None:
         raise HTTPException(404, "no such recipe")
@@ -586,10 +614,21 @@ def ai_illustrate(body: dict):
     n = len(r["ingredients"]) if kind == "ing" else len(r["steps"])
     if kind not in ("ing", "step") or not 1 <= index <= n:
         raise HTTPException(400, "bad kind/index")
-    try:
-        return {"url": imagegen.illustrate(r, kind, index)}
-    except Exception as e:
-        raise HTTPException(502, str(e))
+    job_id = uuid.uuid4().hex
+    with _illust_jobs_lock:
+        _prune_illust_jobs()
+        _illust_jobs[job_id] = {"status": "running", "url": None, "error": None, "ts": time.time()}
+    threading.Thread(target=_run_illustrate_job, args=(job_id, r, kind, index), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.get("/api/ai/illustrate-status")
+def ai_illustrate_status(job_id: str):
+    with _illust_jobs_lock:
+        job = _illust_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, "没有这个任务（可能已经过期，重新生成一次）")
+    return {"status": job["status"], "url": job["url"], "error": job["error"]}
 
 
 @app.post("/api/ai/extract")

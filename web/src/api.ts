@@ -45,6 +45,19 @@ async function j<T>(res: Promise<Response>): Promise<T> {
   return r.json();
 }
 
+// 插画生成改"提交任务 + 轮询"（跟 miniapp 对齐，服务端已把老的同步接口换掉）：
+// 提交后立刻拿 job_id，每隔几秒查一次状态，单次查询很快，不会像旧接口那样一路等到生图完成。
+async function pollIllustrateJob(jobId: string, intervalMs = 2500, maxAttempts = 40): Promise<{ url: string }> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    const job = await j<{ status: string; url: string | null; error: string | null }>(
+      fetch(`/api/ai/illustrate-status?job_id=${encodeURIComponent(jobId)}`));
+    if (job.status === "done" && job.url) return { url: job.url };
+    if (job.status === "error") throw new Error(job.error || "生成失败");
+  }
+  throw new Error("画得有点久，还没出来——过一会再回来看看，后台可能还在继续画");
+}
+
 export const api = {
   recipes: () => j<{ categories: string[]; recipes: Recipe[] }>(fetch("/api/recipes")),
   recipe: (id: string) => j<Recipe>(fetch(`/api/recipes/${id}`)),
@@ -132,11 +145,13 @@ export const api = {
     imagegen?: { backend: string; model: string; available: boolean };
     video?: { backend: string; model: string; available: boolean };
   }>(fetch("/api/ai/status")),
-  aiIllustrate: (recipe_id: string, kind: "ing" | "step", index: number) =>
-    j<{ url: string }>(fetch("/api/ai/illustrate", {
+  aiIllustrate: async (recipe_id: string, kind: "ing" | "step", index: number) => {
+    const { job_id } = await j<{ job_id: string }>(fetch("/api/ai/illustrate-start", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recipe_id, kind, index }),
-    })),
+    }));
+    return pollIllustrateJob(job_id);
+  },
   aiExtract: (text: string, source: string, url?: string) =>
     j<{ name: string; category: string; ingredients: Ingredient[]; steps: string[]; tips: string[]; kcal: number | null; minutes: number | null; source: string; video_can_retry: boolean }>(
       fetch("/api/ai/extract", {
